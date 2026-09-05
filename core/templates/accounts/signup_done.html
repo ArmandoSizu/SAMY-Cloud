@@ -1,0 +1,52 @@
+{% extends "accounts/_signup_shell.html" %}
+
+{% block title %}Cuenta creada &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Confirmacion del alta.
+
+  No se inicia sesion automaticamente. Entre las dos opciones, esta es la mas
+  segura: un POST de registro nunca devuelve una sesion iniciada, asi que un
+  alta forzada desde otro sitio no puede dejar a alguien dentro de una cuenta
+  ajena en su propio navegador. Y obliga a comprobar en el acto que la
+  contrasena quedo como la persona cree, en vez de descubrirlo manana sin
+  poder entrar a su propio negocio.
+{% endcomment %}
+
+{% block signup_content %}
+<div class="flex h-12 w-12 items-center justify-center rounded-full"
+     style="background: var(--color-success-100); color: var(--color-success-600);"
+     aria-hidden="true">
+  {% include "_icons.html" with name="check" %}
+</div>
+
+<h1 class="mt-5 text-2xl font-semibold tracking-tight">Tu cuenta esta lista</h1>
+<p class="mt-1.5 text-[var(--color-ink-500)]">
+  Creamos tu usuario, tu organizacion y tu primera tienda. Entra para empezar.
+</p>
+
+<div class="mt-6 rounded-lg px-4 py-3" style="background: var(--color-ink-50);">
+  <p class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">Tu acceso</p>
+  <p class="mt-0.5 font-medium">{{ email }}</p>
+</div>
+
+<a href="{% url 'accounts:login' %}?next={% url 'dashboard:home' %}"
+   class="btn btn-primary btn-block btn-lg mt-6">
+  Iniciar sesion
+</a>
+
+<p class="mt-6 text-sm text-[var(--color-ink-500)]">
+  Te pedimos entrar ahora en vez de abrirte la sesion sola: asi confirmas que
+  tu contrasena quedo bien guardada antes de empezar a operar.
+</p>
+{% endblock %}
+
+{% block brand_panel %}
+<h2 class="text-3xl font-semibold leading-snug tracking-tight text-white">
+  Bienvenido a SAMY Cloud.
+</h2>
+<p class="mt-5 leading-relaxed text-[var(--color-ink-400)]">
+  Lo siguiente que querras hacer es dar de alta a tu equipo. Lo encuentras en
+  <strong class="text-white">Empleados</strong>, dentro de tu panel.
+</p>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% comment %}
+  Envoltura de las pantallas de registro.
+
+  Es el MISMO esqueleto de dos paneles que el login: formulario a la
+  izquierda, panel de marca oscuro a la derecha que desaparece en celular.
+  Entrar y darse de alta tienen que sentirse como dos puertas del mismo
+  edificio, no como dos productos distintos.
+
+  El panel derecho cambia de contenido segun el paso, para que se note el
+  avance sin robarle sitio al formulario.
+{% endcomment %}
+
+{% block layout %}
+<main class="min-h-full lg:grid lg:grid-cols-[1fr_1.1fr]">
+
+  <div class="flex min-h-screen flex-col justify-center bg-white px-5 py-10 sm:px-10 lg:min-h-full lg:px-16">
+    <div class="mx-auto w-full max-w-sm">
+
+      <a href="{% url 'accounts:login' %}" class="mb-10 inline-block">
+        <img src="{% static 'brand/samy-logo.svg' %}" alt="{{ BRAND_FULL }}" class="h-9 w-auto">
+      </a>
+
+      {% comment %} Indicador de avance: dos pasos, sin sorpresas. {% endcomment %}
+      {% if paso %}
+        <div class="mb-6 flex items-center gap-2" aria-label="Paso {{ paso }} de 2">
+          <span class="h-1 flex-1 rounded-full"
+                style="background: var(--color-accent-600);"></span>
+          <span class="h-1 flex-1 rounded-full"
+                style="background: {% if paso >= 2 %}var(--color-accent-600){% else %}var(--color-ink-200){% endif %};"></span>
+        </div>
+        <p class="mb-1 text-sm font-semibold uppercase tracking-wider"
+           style="color: var(--color-ink-500);">Paso {{ paso }} de 2</p>
+      {% endif %}
+
+      {% block signup_content %}{% endblock %}
+    </div>
+  </div>
+
+  <div class="relative hidden lg:flex lg:flex-col lg:justify-between lg:px-16 lg:py-14"
+       style="background: var(--color-ink-950);">
+    <div class="flex items-center gap-3">
+      <img src="{% static 'brand/samy-mark.svg' %}" alt="" class="h-9 w-9" aria-hidden="true">
+      <span class="text-lg font-semibold text-white">SAMY <span class="font-normal text-[var(--color-ink-400)]">Cloud</span></span>
+    </div>
+
+    <div class="max-w-md">
+      {% block brand_panel %}
+        <h2 class="text-3xl font-semibold leading-snug tracking-tight text-white">
+          Da de alta tu negocio<br>en dos minutos.
+        </h2>
+        <p class="mt-5 leading-relaxed text-[var(--color-ink-400)]">
+          Creas tu cuenta, registras tu tienda y ya puedes empezar a operar.
+          Despues agregas a tus cajeros desde tu propio panel.
+        </p>
+      {% endblock %}
+    </div>
+
+    <p class="text-xs text-[var(--color-ink-600)]">
+      &copy; {% now "Y" %} SAMY Cloud &middot; v{{ SERVICE_VERSION }}
+    </p>
+  </div>
+</main>
+{% endblock %}
+
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}

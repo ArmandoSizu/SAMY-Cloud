@@ -47,6 +47,17 @@
         Historial
       </a>
 
+      {% comment %} Solo para quien administra la tienda. El cajero no ve este
+         enlace y, si escribe la ruta, la vista le responde 403 y lo deja
+         anotado en la bitacora. {% endcomment %}
+      {% if can_manage_employees %}
+        <a href="{% url 'employees:list' %}"
+           class="nav-link {% if '/empleados/' in request.path %}nav-link-active{% endif %}">
+          {% include "_icons.html" with name="users" %}
+          Empleados
+        </a>
+      {% endif %}
+
       {% if user.is_platform_admin %}
         <div class="pt-4">
           <p class="px-3 pb-1 text-2xs font-semibold uppercase tracking-wider"
@@ -134,7 +145,11 @@
     </main>
 
     <!-- Barra inferior (celular) -->
-    <nav class="tabbar no-print" style="grid-template-columns: repeat(4, minmax(0, 1fr));"
+    {% comment %} La barra inferior crece a cinco columnas cuando el usuario
+       administra la tienda. Cinco es el limite: mas iconos en un pulgar dejan
+       de ser objetivos tocables. {% endcomment %}
+    <nav class="tabbar no-print"
+         style="grid-template-columns: repeat({% if can_manage_employees %}5{% else %}4{% endif %}, minmax(0, 1fr));"
          aria-label="Navegacion">
       <a href="{% url 'dashboard:home' %}"
          class="tabbar-item {% if request.path == url_home %}tabbar-item-active{% endif %}">
@@ -156,6 +171,13 @@
         {% include "_icons.html" with name="clock" %}
         <span>Historial</span>
       </a>
+      {% if can_manage_employees %}
+        <a href="{% url 'employees:list' %}"
+           class="tabbar-item {% if '/empleados/' in request.path %}tabbar-item-active{% endif %}">
+          {% include "_icons.html" with name="users" %}
+          <span>Empleados</span>
+        </a>
+      {% endif %}
     </nav>
   </div>
 </div>

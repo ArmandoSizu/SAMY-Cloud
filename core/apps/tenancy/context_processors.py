@@ -21,4 +21,17 @@ def current_store(request: HttpRequest) -> dict[str, Any]:
         "current_role": membership.role if membership else None,
         "available_memberships": available,
         "can_switch_store": len(available) > 1,
+        # Permisos que la navegacion necesita consultar. Se resuelven aqui,
+        # con la misma funcion que protege las vistas, para que el menu no
+        # pueda desincronizarse de lo que realmente esta permitido. Ocultar
+        # un enlace nunca sustituye al permiso: la vista lo vuelve a exigir.
+        "can_manage_employees": _has_perm(request, "store.manage_employees"),
     }
+
+
+def _has_perm(request: HttpRequest, permission: str) -> bool:
+    # Importacion diferida: permissions importa modelos, y este modulo lo
+    # carga Django al construir las plantillas.
+    from apps.tenancy.permissions import user_has_perm
+
+    return user_has_perm(request, permission)

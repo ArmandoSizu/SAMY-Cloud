@@ -1,0 +1,98 @@
+{% extends "accounts/_signup_shell.html" %}
+
+{% block title %}Crear cuenta &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Paso 1: la persona.
+
+  Se pide primero el correo y la contrasena, y el negocio despues, para que
+  un correo ya registrado se detecte ANTES de que alguien escriba los datos
+  de su tienda. Al reves, se perderia el trabajo hecho.
+{% endcomment %}
+
+{% block signup_content %}
+<h1 class="text-2xl font-semibold tracking-tight">Crear cuenta SAMY Cloud</h1>
+<p class="mt-1.5 text-[var(--color-ink-500)]">
+  Primero tus datos. Despues los de tu negocio.
+</p>
+
+{% if rate_limited %}
+  <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
+       style="border-color: var(--color-warning-600); background: var(--color-warning-100); color: var(--color-warning-600);"
+       role="alert">
+    <p class="font-medium">Demasiados intentos</p>
+    <p class="mt-1">Espera unos minutos antes de volver a intentarlo.</p>
+  </div>
+{% endif %}
+
+{% if form.non_field_errors %}
+  <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
+       style="border-color: var(--color-danger-600); background: var(--color-danger-100); color: var(--color-danger-600);"
+       role="alert">
+    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+  </div>
+{% endif %}
+
+<form method="post" class="mt-7 space-y-5" novalidate>
+  {% csrf_token %}
+
+  <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+    {% include "accounts/_field.html" with field=form.first_name autocomplete="given-name" autofocus=True %}
+    {% include "accounts/_field.html" with field=form.last_name autocomplete="family-name" %}
+  </div>
+
+  {% include "accounts/_field.html" with field=form.email type="email" inputmode="email" autocomplete="email" placeholder="tu@negocio.mx" %}
+  {% include "accounts/_field.html" with field=form.phone type="tel" inputmode="tel" autocomplete="tel" placeholder="55 1234 5678" %}
+
+  {% comment %} Contrasena con opcion de verla: escribir 12 caracteres a ciegas
+     en un celular es la receta para no poder entrar despues. {% endcomment %}
+  <div x-data="{ show: false }">
+    <label for="{{ form.password1.id_for_label }}" class="field-label">Contrasena</label>
+    <div class="relative">
+      <input :type="show ? 'text' : 'password'"
+             type="password"
+             name="{{ form.password1.html_name }}"
+             id="{{ form.password1.id_for_label }}"
+             class="input pr-12 {% if form.password1.errors %}input-error{% endif %}"
+             autocomplete="new-password"
+             required
+             {% if form.password1.errors %}aria-invalid="true" aria-describedby="err-password1"{% endif %}>
+      <button type="button" @click="show = !show" tabindex="-1"
+              class="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--color-ink-400)] hover:text-[var(--color-ink-700)]"
+              :aria-label="show ? 'Ocultar contrasena' : 'Mostrar contrasena'">
+        <span x-show="!show">{% include "_icons.html" with name="lock" %}</span>
+        <span x-show="show" x-cloak>{% include "_icons.html" with name="check" %}</span>
+      </button>
+    </div>
+    <p class="mt-1 text-xs text-[var(--color-ink-400)]">
+      Minimo 12 caracteres. No uses tu correo ni tu nombre.
+    </p>
+    {% if form.password1.errors %}
+      <p class="field-error" id="err-password1">{{ form.password1.errors.0 }}</p>
+    {% endif %}
+  </div>
+
+  <div>
+    <label for="{{ form.password2.id_for_label }}" class="field-label">Confirma la contrasena</label>
+    <input type="password"
+           name="{{ form.password2.html_name }}"
+           id="{{ form.password2.id_for_label }}"
+           class="input {% if form.password2.errors %}input-error{% endif %}"
+           autocomplete="new-password"
+           required
+           {% if form.password2.errors %}aria-invalid="true" aria-describedby="err-password2"{% endif %}>
+    {% if form.password2.errors %}
+      <p class="field-error" id="err-password2">{{ form.password2.errors.0 }}</p>
+    {% endif %}
+  </div>
+
+  <button type="submit" class="btn btn-primary btn-block btn-lg">
+    Continuar
+  </button>
+</form>
+
+<p class="mt-8 text-center text-sm text-[var(--color-ink-500)]">
+  &iquest;Ya tienes una cuenta?
+  <a href="{% url 'accounts:login' %}" class="font-medium" style="color: var(--color-accent-600);">Iniciar sesion</a>
+</p>
+{% endblock %}

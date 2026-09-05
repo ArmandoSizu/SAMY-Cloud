@@ -39,6 +39,7 @@ urlpatterns = [
     path("recargas/", include("apps.gateway.urls_topups", namespace="topups")),
     path("servicios/", include("apps.gateway.urls_billpay", namespace="billpay")),
     path("operaciones/", include("apps.gateway.urls_operations", namespace="operations")),
+    path("empleados/", include("apps.tenancy.urls_employees", namespace="employees")),
 
     # --- Panel de plataforma --------------------------------------------
     path("plataforma/", include("apps.platform_admin.urls")),

@@ -1,0 +1,25 @@
+{% extends "_app.html" %}
+
+{% block title %}Empleados &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Caso del administrador de plataforma sin tienda activa. Tiene el permiso,
+  pero los empleados pertenecen a una tienda concreta y no hay ninguna
+  seleccionada, asi que no hay nada que listar.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-lg">
+  <div class="surface">
+    <div class="empty-state">
+      <div class="empty-state-icon">{% include "_icons.html" with name="empty-box" %}</div>
+      <p class="empty-state-title">No hay una tienda activa</p>
+      <p class="empty-state-text">
+        Los empleados se administran por tienda. Selecciona una para ver quien
+        trabaja en ella.
+      </p>
+      <a href="{% url 'dashboard:home' %}" class="btn btn-secondary mt-5">Volver al panel</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

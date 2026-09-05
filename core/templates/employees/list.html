@@ -1,0 +1,144 @@
+{% extends "_app.html" %}
+
+{% block title %}Empleados &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Empleados de la tienda activa.
+
+  La clave temporal se muestra UNA vez, justo despues de generarla, y nunca
+  mas: no esta guardada en claro en ningun sitio. Si el dueno cierra la
+  pantalla sin apuntarla, tiene que restablecer el acceso otra vez. Es
+  deliberado: una clave que se puede volver a consultar deja de ser temporal.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl">
+
+  <header class="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Empleados</h1>
+      <p class="mt-1 text-[var(--color-ink-500)]">
+        Quien puede operar en {{ current_store.name }}.
+      </p>
+    </div>
+    <a href="{% url 'employees:new' %}" class="btn btn-primary">Agregar cajero</a>
+  </header>
+
+  {% if credencial %}
+    {% comment %} Se muestra una sola vez. Al recargar ya no esta. {% endcomment %}
+    <div class="surface surface-pad mb-6" style="border: 2px solid var(--color-success-600);">
+      <div class="flex items-start gap-2.5">
+        <span class="mt-0.5" style="color: var(--color-success-600);">
+          {% include "_icons.html" with name="check" %}
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold">
+            {% if credencial.motivo == "alta" %}
+              {{ credencial.nombre }} quedo dado de alta
+            {% else %}
+              Acceso restablecido para {{ credencial.nombre }}
+            {% endif %}
+          </p>
+          <p class="mt-1 text-sm text-[var(--color-ink-600)]">
+            Entregale estos datos. La contrasena es temporal: el sistema le
+            obligara a cambiarla la primera vez que entre.
+          </p>
+
+          <dl class="mt-4 space-y-2">
+            <div class="rounded-lg px-4 py-2.5" style="background: var(--color-ink-50);">
+              <dt class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">Correo</dt>
+              <dd class="mt-0.5 break-all font-medium">{{ credencial.email }}</dd>
+            </div>
+            <div class="rounded-lg px-4 py-2.5" style="background: var(--color-ink-50);">
+              <dt class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">Contrasena temporal</dt>
+              <dd class="mt-0.5 break-all text-lg font-semibold tabular">{{ credencial.password }}</dd>
+            </div>
+          </dl>
+
+          <p class="mt-3 text-sm font-medium" style="color: var(--color-warning-600);">
+            Anotala ahora: no se vuelve a mostrar.
+          </p>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if empleados %}
+    <div class="surface overflow-hidden">
+      <ul class="divide-y" style="border-color: var(--color-ink-200);">
+        {% for e in empleados %}
+          <li class="flex flex-wrap items-center gap-3 px-4 py-4 sm:px-5">
+
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+                 style="background: var(--color-ink-100); color: var(--color-ink-600);" aria-hidden="true">
+              {{ e.user.initials }}
+            </div>
+
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-medium">
+                {{ e.user.full_name }}
+                {% if e.user_id == user.id %}
+                  <span class="text-sm font-normal text-[var(--color-ink-400)]">(tu)</span>
+                {% endif %}
+              </p>
+              <p class="truncate text-sm text-[var(--color-ink-500)]">{{ e.user.email }}</p>
+              {% if e.user.phone %}
+                <p class="text-sm tabular text-[var(--color-ink-400)]">{{ e.user.phone }}</p>
+              {% endif %}
+              <p class="mt-1 text-xs text-[var(--color-ink-400)]">
+                Alta {{ e.created_at|date:"d/m/Y" }}
+                {% if e.user.last_login %} &middot; ultimo acceso {{ e.user.last_login|date:"d/m/Y H:i" }}
+                {% else %} &middot; nunca ha entrado{% endif %}
+              </p>
+            </div>
+
+            <div class="flex shrink-0 flex-wrap items-center gap-2">
+              <span class="badge {% if e.role == 'STORE_OWNER' %}badge-accent{% else %}badge-neutral{% endif %}">
+                {{ e.get_role_display }}
+              </span>
+              {% if e.is_active %}
+                <span class="badge badge-success">Activo</span>
+              {% else %}
+                <span class="badge badge-neutral">Desactivado</span>
+              {% endif %}
+
+              {% comment %} Las acciones solo aparecen para cajeros que no son uno
+                 mismo. La vista vuelve a comprobarlo: ocultar un boton no es
+                 una medida de seguridad. {% endcomment %}
+              {% if e.role == "CASHIER" and e.user_id != user.id %}
+                <form method="post" action="{% url 'employees:reset' e.id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-ghost btn-sm">Restablecer acceso</button>
+                </form>
+                <form method="post" action="{% url 'employees:toggle' e.id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-secondary btn-sm">
+                    {% if e.is_active %}Desactivar{% else %}Reactivar{% endif %}
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <p class="mt-3 text-sm text-[var(--color-ink-400)]">
+      {{ activos }} de {{ empleados|length }} con acceso activo.
+      Al desactivar a alguien, deja de operar en su siguiente clic.
+    </p>
+
+  {% else %}
+    <div class="surface">
+      <div class="empty-state">
+        <div class="empty-state-icon">{% include "_icons.html" with name="empty-box" %}</div>
+        <p class="empty-state-title">Todavia no hay empleados</p>
+        <p class="empty-state-text">
+          Agrega a tus cajeros para que puedan operar sin usar tu cuenta.
+        </p>
+        <a href="{% url 'employees:new' %}" class="btn btn-primary mt-5">Agregar cajero</a>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

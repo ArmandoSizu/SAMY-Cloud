@@ -89,6 +89,10 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
+    # Va ANTES de resolver la tienda: si la contrasena es temporal, no hay
+    # nada que resolver todavia. Y despues de AuthenticationMiddleware,
+    # porque necesita request.user.
+    "apps.accounts.middleware.ForcePasswordChangeMiddleware",
     "apps.tenancy.middleware.CurrentStoreMiddleware",
     # django-axes va al final para ver la peticion ya autenticada.
     "axes.middleware.AxesMiddleware",

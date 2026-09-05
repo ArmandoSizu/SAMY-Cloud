@@ -26,7 +26,12 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 
-from apps.accounts.forms import SamyAuthenticationForm, SamyPasswordResetForm, SamySetPasswordForm
+from apps.accounts.forms import (
+    SamyAuthenticationForm,
+    SamyPasswordChangeForm,
+    SamyPasswordResetForm,
+    SamySetPasswordForm,
+)
 from apps.audit import services as audit
 from apps.audit.models import AuditAction
 from apps.tenancy.middleware import set_active_store
@@ -134,6 +139,38 @@ class PasswordResetConfirmView(auth_views.PasswordResetConfirmView):
 
 class PasswordResetCompleteView(auth_views.PasswordResetCompleteView):
     template_name = "accounts/password_reset_complete.html"
+
+
+class PasswordChangeView(auth_views.PasswordChangeView):
+    """Cambio de contrasena estando dentro.
+
+    Es la salida obligada del acceso temporal que el dueno entrega a un
+    cajero: ``ForcePasswordChangeMiddleware`` encierra la sesion aqui hasta
+    que la contrasena se cambia. Por eso al terminar se limpia la marca y se
+    va directo al panel, sin una pantalla intermedia de "listo" que solo
+    anadiria un clic entre el cajero y su primera venta.
+    """
+
+    template_name = "accounts/password_change.html"
+    form_class = SamyPasswordChangeForm
+    success_url = reverse_lazy("dashboard:home")
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        # La plantilla explica POR QUE se le pide el cambio, que no es lo
+        # mismo si entro con una clave temporal que si vino por su cuenta.
+        context["es_obligatorio"] = self.request.user.must_change_password
+        return context
+
+    def form_valid(self, form) -> HttpResponse:
+        response = super().form_valid(form)
+        user = form.user
+        if user.must_change_password:
+            user.must_change_password = False
+            user.save(update_fields=["must_change_password"])
+        audit.record(self.request, AuditAction.PASSWORD_CHANGED, actor=user)
+        messages.success(self.request, "Tu contrasena quedo actualizada.")
+        return response
 
 
 @never_cache

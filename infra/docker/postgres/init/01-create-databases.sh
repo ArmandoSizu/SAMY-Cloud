@@ -22,7 +22,11 @@ create_service_db() {
   echo "  -> creando base '${db}' y usuario '${user}'"
 
   psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-SQL
-    CREATE USER ${user} WITH PASSWORD '${password}';
+    -- CREATEDB es para ENTORNO DE DESARROLLO: el corredor de pruebas de
+    -- Django crea y destruye una base 'test_<nombre>' en cada ejecucion, y
+    -- sin este privilegio no puede. En produccion este permiso NO debe
+    -- concederse: alli el servicio solo necesita su propia base.
+    CREATE USER ${user} WITH PASSWORD '${password}' CREATEDB;
     CREATE DATABASE ${db} OWNER ${user};
     -- Nadie mas que el dueno puede conectarse.
     REVOKE ALL ON DATABASE ${db} FROM PUBLIC;

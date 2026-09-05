@@ -41,6 +41,22 @@
         <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">CFE, agua y mas</p>
       </div>
     </a>
+
+    {% comment %} Empleados: solo para quien administra la tienda. Lo decide el
+       permiso, no el rol escrito a mano, para que el panel no ofrezca nunca
+       algo que la vista despues va a rechazar. {% endcomment %}
+    {% if can_manage_employees %}
+      <a href="{% url 'employees:list' %}" class="action-tile group">
+        <div>
+          <div class="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl"
+               style="background: var(--color-accent-50); color: var(--color-accent-600);">
+            {% include "_icons.html" with name="users" %}
+          </div>
+          <h2 class="text-lg font-semibold">Empleados</h2>
+          <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">Cajeros y accesos</p>
+        </div>
+      </a>
+    {% endif %}
   </div>
 
   <!-- Resumen del dia -->

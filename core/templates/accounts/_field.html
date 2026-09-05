@@ -1,0 +1,40 @@
+{% comment %}
+  Campo de formulario reutilizable.
+
+  Repetir catorce veces el bloque etiqueta + input + error acaba en catorce
+  variantes ligeramente distintas. Aqui se define una vez y todas las
+  pantallas de alta se ven igual.
+
+  Accesibilidad: el error se enlaza con aria-describedby y el campo se marca
+  con aria-invalid, para que un lector de pantalla anuncie el problema al
+  llegar al campo y no solo al principio de la pagina.
+
+  Parametros:
+    field       campo del formulario
+    type        tipo de input (por omision "text")
+    inputmode   teclado en celular
+    autocomplete
+    placeholder
+    autofocus
+{% endcomment %}
+<div>
+  <label for="{{ field.id_for_label }}" class="field-label">{{ field.label }}</label>
+  <input type="{{ type|default:'text' }}"
+         name="{{ field.html_name }}"
+         id="{{ field.id_for_label }}"
+         class="input {% if field.errors %}input-error{% endif %}"
+         value="{{ field.value|default:'' }}"
+         {% if inputmode %}inputmode="{{ inputmode }}"{% endif %}
+         {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
+         {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+         {% if autofocus %}autofocus{% endif %}
+         {% if type == 'email' %}autocapitalize="none" spellcheck="false"{% endif %}
+         {% if field.field.required %}required{% endif %}
+         {% if field.errors %}aria-invalid="true" aria-describedby="err-{{ field.html_name }}"{% endif %}>
+  {% if field.help_text %}
+    <p class="mt-1 text-xs text-[var(--color-ink-400)]">{{ field.help_text }}</p>
+  {% endif %}
+  {% if field.errors %}
+    <p class="field-error" id="err-{{ field.html_name }}">{{ field.errors.0 }}</p>
+  {% endif %}
+</div>

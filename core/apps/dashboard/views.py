@@ -84,7 +84,9 @@ def _available_actions(request: HttpRequest) -> list[dict[str, Any]]:
     pintan botones que no llevan a ningun lado: un boton muerto es una promesa
     incumplida y en este producto no hay ninguno.
     """
-    return [
+    from apps.tenancy.permissions import user_has_perm
+
+    acciones = [
         {
             "key": "topups",
             "label": "Recargas",
@@ -110,6 +112,23 @@ def _available_actions(request: HttpRequest) -> list[dict[str, Any]]:
             "primary": False,
         },
     ]
+
+    # Se anade solo si el rol lo permite. El mismo comprobador que protege la
+    # vista decide si el acceso aparece, para que el panel no ofrezca nunca
+    # algo que despues va a rechazar.
+    if user_has_perm(request, "store.manage_employees"):
+        acciones.append(
+            {
+                "key": "employees",
+                "label": "Empleados",
+                "description": "Cajeros y accesos",
+                "url_name": "employees:list",
+                "icon": "users",
+                "primary": False,
+            }
+        )
+
+    return acciones
 
 
 def _fetch_daily_summary(request: HttpRequest, *, scope: str) -> dict[str, Any]:

@@ -108,6 +108,15 @@
         {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
       </form>
 
+      {% comment %} Alta de negocios nuevos. El registro publico crea siempre un
+         propietario con su organizacion y su tienda; los cajeros los da de
+         alta despues el dueno desde su panel. {% endcomment %}
+      <p class="mt-7 text-center text-sm text-[var(--color-ink-500)]">
+        &iquest;No tienes una cuenta?
+        <a href="{% url 'accounts:signup' %}" class="font-medium"
+           style="color: var(--color-accent-600);">Crear cuenta</a>
+      </p>
+
       <p class="mt-8 text-center text-xs text-[var(--color-ink-400)]">
         Conexion cifrada. Tu sesion se cierra automaticamente tras 8 horas de inactividad.
       </p>
