@@ -76,11 +76,26 @@
           </div>
         {% endif %}
 
-        {% if user.is_platform_admin %}
-          <a href="{% url 'platform_admin:providers' %}" class="btn btn-secondary mt-5">
-            Ver estado de integraciones
+        {% comment %}
+          El lector de codigos NO depende del agregador: es una capacidad del
+          equipo. Se puede comprobar hoy, y conviene hacerlo antes de que el
+          servicio se habilite. La prueba no cobra ni consulta nada.
+        {% endcomment %}
+        <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
+          {% if user.is_platform_admin %}
+            <a href="{% url 'platform_admin:providers' %}" class="btn btn-secondary">
+              Ver estado de integraciones
+            </a>
+          {% endif %}
+          <a href="{% url 'dashboard:scanner_check' %}" class="btn btn-ghost">
+            {% include "_icons.html" with name="camera" %}
+            Probar el lector de codigos
           </a>
-        {% endif %}
+        </div>
+
+        <p class="mt-2 text-xs text-[var(--color-ink-400)]">
+          El lector funciona sin el agregador: puedes comprobarlo ahora.
+        </p>
       </div>
     </div>
   {% endif %}

@@ -143,6 +143,36 @@ def _fetch_daily_summary(request: HttpRequest, *, scope: str) -> dict[str, Any]:
     return {"available": True, **data}
 
 
+@login_required
+@require_GET
+def scanner_check(request: HttpRequest) -> HttpResponse:
+    """Prueba del lector de codigos.
+
+    El lector se usa dentro del pago de servicios, pero ese flujo depende de
+    un agregador con el que todavia no hay contrato. Esta pantalla permite
+    comprobar HOY que la camara y la decodificacion funcionan en el equipo del
+    comercio, sin inventar un servicio que no existe: **no cobra, no consulta
+    ningun adeudo y no crea ninguna operacion**. Solo muestra lo que leyo.
+
+    Es util mas alla de la puesta en marcha: si un cajero dice "no me lee el
+    codigo", esta es la pantalla que separa un problema de camara de un
+    problema del recibo.
+    """
+    return render(
+        request,
+        "tools/scanner_check.html",
+        {
+            # La camara solo funciona en un origen seguro. En desarrollo,
+            # localhost cuenta como seguro; entrar por la IP de la red local
+            # (http://192.168.x.x:8000) no, y es la causa numero uno de
+            # "no me abre la camara" al probar desde el celular.
+            "is_secure_origin": request.is_secure() or request.get_host().split(":")[0]
+            in ("localhost", "127.0.0.1"),
+            "host": request.get_host(),
+        },
+    )
+
+
 @require_GET
 @cache_control(max_age=86400)
 def manifest(request: HttpRequest) -> JsonResponse:

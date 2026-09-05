@@ -1,0 +1,162 @@
+{% extends "_app.html" %}
+{% load static %}
+
+{% block title %}Probar el lector &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Prueba del lector de codigos.
+
+  Esta pantalla NO cobra, NO consulta ningun adeudo y NO crea operaciones.
+  Solo abre la camara y muestra lo que leyo. Existe porque el lector vive
+  dentro del pago de servicios, y ese flujo depende de un agregador con el
+  que todavia no hay contrato: sin esta pantalla no habria forma de
+  comprobar hoy que la camara del comercio funciona.
+
+  Tambien sirve en el dia a dia: cuando un cajero dice "no me lee el codigo",
+  aqui se distingue un problema de camara de un recibo mal impreso.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-lg" x-data="samyScanner({})">
+
+  <a href="{% url 'dashboard:home' %}"
+     class="mb-5 inline-flex items-center gap-1.5 text-sm font-medium"
+     style="color: var(--color-ink-500);">
+    {% include "_icons.html" with name="arrow-left" %}
+    Volver
+  </a>
+
+  <header class="mb-5">
+    <h1 class="text-2xl font-semibold tracking-tight">Probar el lector de codigos</h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">
+      Comprueba que la camara de este equipo lee un codigo de barras.
+    </p>
+  </header>
+
+  <div class="mb-5 flex items-start gap-2.5 rounded-lg px-4 py-3"
+       style="background: var(--color-info-100); color: var(--color-info-600);">
+    <span class="mt-0.5">{% include "_icons.html" with name="lock" %}</span>
+    <p class="text-sm">
+      Esta pantalla es solo una prueba. <strong>No cobra, no consulta adeudos
+      y no genera ninguna operacion.</strong> Lo que leas aqui no sale de este
+      navegador.
+    </p>
+  </div>
+
+  {% if not is_secure_origin %}
+    <div class="mb-5 flex items-start gap-2.5 rounded-lg px-4 py-3"
+         style="background: var(--color-warning-100); color: var(--color-warning-600);" role="alert">
+      <span class="mt-0.5">{% include "_icons.html" with name="alert" %}</span>
+      <div class="text-sm">
+        <p class="font-semibold">Este origen no es seguro para la camara.</p>
+        <p class="mt-1">
+          Estas entrando por <code>{{ host }}</code>. Los navegadores solo dan
+          acceso a la camara por HTTPS o desde <code>localhost</code>. Para
+          probar desde un celular necesitas servir SAMY Cloud con HTTPS.
+        </p>
+      </div>
+    </div>
+  {% endif %}
+
+  {# ================= Camara ================= #}
+  <template x-if="active">
+    <div class="surface mb-4 overflow-hidden">
+      <div class="relative bg-black" style="aspect-ratio: 4/3;">
+        <video x-ref="video" class="h-full w-full object-cover" playsinline muted></video>
+
+        <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div class="rounded-lg border-2 border-white/80"
+               style="width: 78%; height: 34%; box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.45);"></div>
+        </div>
+
+        <p class="absolute inset-x-0 bottom-3 text-center text-sm text-white/90"
+           x-text="status === 'confirming' ? 'Detectando, mantenlo firme...' : 'Encuadra el codigo de barras'"></p>
+      </div>
+
+      <div class="p-4">
+        <button type="button" @click="stopScan()" class="btn btn-secondary btn-block">
+          Detener
+        </button>
+      </div>
+    </div>
+  </template>
+
+  {# ================= Controles y resultado ================= #}
+  <div x-show="!active">
+
+    <template x-if="canScan">
+      <button type="button" @click="startScan()" class="btn btn-primary btn-block btn-lg">
+        {% include "_icons.html" with name="camera" %}
+        <span x-text="detectedValue ? 'Leer otro codigo' : 'Abrir la camara'">Abrir la camara</span>
+      </button>
+    </template>
+
+    <template x-if="!canScan">
+      <div class="flex items-start gap-2.5 rounded-lg px-4 py-3"
+           style="background: var(--color-warning-100); color: var(--color-warning-600);">
+        <span class="mt-0.5">{% include "_icons.html" with name="alert" %}</span>
+        <p class="text-sm">
+          Este dispositivo o navegador no permite usar la camara. En el pago de
+          servicios siempre queda disponible la captura manual.
+        </p>
+      </div>
+    </template>
+
+    <p x-show="errorMessage" x-cloak class="field-error mt-3" role="alert" x-text="errorMessage"></p>
+
+    {# Resultado real de la lectura #}
+    <div x-show="detectedValue" x-cloak class="surface surface-pad mt-5">
+      <p class="text-xs font-semibold uppercase tracking-wider"
+         style="color: var(--color-success-600);">Codigo leido</p>
+      <p class="mt-2 break-all text-2xl font-semibold tabular tracking-tight"
+         x-text="detectedValue"></p>
+
+      <dl class="mt-4 space-y-1.5 border-t pt-4 text-sm" style="border-color: var(--color-ink-200);">
+        <div class="flex justify-between">
+          <dt style="color: var(--color-ink-500);">Formato</dt>
+          <dd class="font-medium" x-text="lastFormat || '-'"></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt style="color: var(--color-ink-500);">Caracteres</dt>
+          <dd class="font-medium tabular" x-text="detectedValue.length"></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt style="color: var(--color-ink-500);">Motor</dt>
+          <dd class="font-medium" x-text="engineLabel"></dd>
+        </div>
+      </dl>
+    </div>
+
+    {# Capacidades del equipo: util para soporte #}
+    <div class="surface surface-pad mt-4">
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wider"
+         style="color: var(--color-ink-500);">Este equipo</p>
+      <dl class="space-y-1.5 text-sm">
+        <div class="flex justify-between">
+          <dt style="color: var(--color-ink-600);">Acceso a la camara</dt>
+          <dd class="font-medium" x-text="caps.camera ? 'si' : 'no'"></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt style="color: var(--color-ink-600);">Origen seguro</dt>
+          <dd class="font-medium" x-text="caps.secure ? 'si' : 'no'"></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt style="color: var(--color-ink-600);">Lector nativo del navegador</dt>
+          <dd class="font-medium" x-text="caps.native ? 'si' : 'no (se usa el respaldo)'"></dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}<style>[x-cloak]{display:none!important}</style>{% endblock %}
+
+{% block extra_scripts %}
+{% comment %}
+  Aqui no hay ningun script de pagina: el componente samyScanner ya expone
+  lastFormat, engineLabel y caps. A diferencia de la captura de referencia,
+  esta pantalla NO envia nada al servidor al detectar un codigo.
+{% endcomment %}
+<script type="module" src="{% static 'js/scanner.js' %}"></script>
+{% endblock %}

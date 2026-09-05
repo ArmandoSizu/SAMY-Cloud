@@ -21,7 +21,13 @@
      externos para scripts, y depender de un CDN de terceros en un sistema
      que cobra dinero anade un punto de fallo y de riesgo de suministro. {% endcomment %}
   <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
-  <script src="{% static 'vendor/alpine.min.js' %}" defer></script>
+
+  {% comment %} Alpine NO se carga aqui: va al final del <body>, despues de
+     extra_scripts. Alpine dispara "alpine:init" y arranca en cuanto se
+     ejecuta, asi que cualquier componente registrado despues llegaria tarde y
+     su x-data no existiria. Cargandolo al final, las pantallas registran sus
+     componentes primero (por ejemplo el lector de codigos) y Alpine los
+     encuentra al arrancar. {% endcomment %}
 
   {% block extra_head %}{% endblock %}
 </head>
@@ -52,5 +58,8 @@
   </div>
 
   {% block extra_scripts %}{% endblock %}
+
+  {% comment %} Alpine, al final y a proposito: ver la nota del <head>. {% endcomment %}
+  <script src="{% static 'vendor/alpine.min.js' %}" defer></script>
 </body>
 </html>

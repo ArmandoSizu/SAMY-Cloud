@@ -48,6 +48,12 @@ const CONFIRMATIONS_REQUIRED = 2;
 /** Techo de detecciones por segundo. Más no mejora la lectura y calienta el equipo. */
 const SCAN_FPS = 10;
 
+/**
+ * Respaldo autoalojado. Lo copia `npm run vendor` desde node_modules; la
+ * política de seguridad de contenido no permite traerlo de un CDN.
+ */
+const ZXING_URL = '/static/vendor/zxing.min.js';
+
 class SamyScanner {
   constructor(options) {
     this.video = options.video;
@@ -159,7 +165,37 @@ class SamyScanner {
     this.running = true;
     this.onStatus({ state: 'scanning' });
     document.addEventListener('visibilitychange', this._onVisibilityChange);
-    this._scanLoop();
+    this._startDetection();
+  }
+
+  /**
+   * Cada motor se conduce distinto:
+   *
+   * - `BarcodeDetector` decodifica el cuadro que se le pase, asi que lo
+   *   gobierna nuestro propio bucle y podemos limitar los cuadros por segundo.
+   * - ZXing trae su bucle interno y avisa por callback. Intentar llamarlo
+   *   cuadro a cuadro lo pondria a competir consigo mismo.
+   */
+  _startDetection() {
+    if (this.detector) {
+      this._scanLoop();
+      return;
+    }
+
+    if (this.zxingReader) {
+      this.zxingReader
+        .decodeFromVideoElementContinuously(this.video, (result) => {
+          if (!this.running || !result) return;
+          this._handleCandidate(result.getText(), 'zxing');
+        })
+        .catch(() => {
+          this.onError({
+            code: 'zxing_failed',
+            message: 'El lector no pudo iniciar. Captura la referencia manualmente.',
+          });
+          this.stop();
+        });
+    }
   }
 
   stop() {
@@ -222,13 +258,18 @@ class SamyScanner {
     await this._initZxingFallback();
   }
 
+  /**
+   * Carga ZXing solo cuando hace falta.
+   *
+   * Se inyecta como <script> y no con `import()` porque el paquete publica un
+   * bundle UMD, no un módulo ES: importarlo como módulo falla en tiempo de
+   * ejecución. El archivo se sirve desde nuestro propio origen (npm run
+   * vendor) porque la política de seguridad de contenido no permite CDN.
+   */
   async _initZxingFallback() {
     try {
-      // Import dinámico: solo los navegadores que lo necesitan pagan la
-      // descarga. El archivo se sirve desde nuestro propio origen porque la
-      // CSP de producción no permite scripts de CDN.
-      const zxing = await import('/static/vendor/zxing-browser.min.js');
-      const { BrowserMultiFormatReader } = zxing;
+      await SamyScanner._loadScriptOnce(ZXING_URL, 'ZXing');
+      const { BrowserMultiFormatReader } = window.ZXing;
       this.zxingReader = new BrowserMultiFormatReader();
       this.onStatus({ state: 'detector_ready', engine: 'zxing' });
     } catch (error) {
@@ -237,6 +278,26 @@ class SamyScanner {
         message: 'No se pudo cargar el lector de códigos. Usa captura manual.',
       });
     }
+  }
+
+  /** Inyecta un script una sola vez y espera a que defina su variable global. */
+  static _loadScriptOnce(url, globalName) {
+    if (window[globalName]) return Promise.resolve();
+    if (SamyScanner._pendingScripts[url]) return SamyScanner._pendingScripts[url];
+
+    SamyScanner._pendingScripts[url] = new Promise((resolve, reject) => {
+      const tag = document.createElement('script');
+      tag.src = url;
+      tag.async = true;
+      tag.onload = () =>
+        window[globalName]
+          ? resolve()
+          : reject(new Error(`${url} no definió ${globalName}`));
+      tag.onerror = () => reject(new Error(`no se pudo descargar ${url}`));
+      document.head.appendChild(tag);
+    });
+
+    return SamyScanner._pendingScripts[url];
   }
 
   _scanLoop() {
@@ -254,33 +315,29 @@ class SamyScanner {
   }
 
   async _detectFrame() {
-    if (!this.video || this.video.readyState < 2) return;
+    if (!this.detector || !this.video || this.video.readyState < 2) return;
 
-    let value = null;
-    let format = null;
-
+    let codes = null;
     try {
-      if (this.detector) {
-        const codes = await this.detector.detect(this.video);
-        if (codes && codes.length > 0) {
-          value = codes[0].rawValue;
-          format = codes[0].format;
-        }
-      } else if (this.zxingReader) {
-        const result = await this.zxingReader
-          .decodeOnceFromVideoElement(this.video)
-          .catch(() => null);
-        if (result) {
-          value = result.getText();
-          format = 'zxing';
-        }
-      }
+      codes = await this.detector.detect(this.video);
     } catch (error) {
       // Un cuadro que no se pudo decodificar es lo normal, no un error.
       return;
     }
 
-    if (!value) return;
+    if (!codes || codes.length === 0) return;
+    this._handleCandidate(codes[0].rawValue, codes[0].format);
+  }
+
+  /**
+   * Confirmación por repetición, compartida por los dos motores.
+   *
+   * Se exige leer el mismo código dos veces seguidas: con un solo acierto, un
+   * reflejo o el código de al lado producen lecturas falsas, y aquí una
+   * lectura falsa significa pagar el recibo de otra persona.
+   */
+  _handleCandidate(value, format) {
+    if (!this.running || !value) return;
 
     const cleaned = String(value).trim();
     if (!cleaned) return;
@@ -361,7 +418,7 @@ class SamyScanner {
  * cualquiera puede saltárselo, y con dinero de por medio la única validación
  * que cuenta es la del servidor.
  */
-document.addEventListener('alpine:init', () => {
+function registrarComponenteAlpine() {
   window.Alpine.data('samyScanner', (config = {}) => ({
     scanner: null,
     active: false,
@@ -370,6 +427,10 @@ document.addEventListener('alpine:init', () => {
     manualValue: '',
     detectedValue: '',
     confirmProgress: 0,
+    /** Formato del ultimo codigo leido ('code_128', 'ean_13', 'manual'...). */
+    lastFormat: '',
+    /** Motor que decodifico: 'native' | 'zxing' | '' si aun no se sabe. */
+    engine: '',
 
     init() {
       // Apagar la cámara al salir de la pantalla, incluso navegando con HTMX.
@@ -393,6 +454,7 @@ document.addEventListener('alpine:init', () => {
         formats: config.formats,
         onDetect: (value, format) => {
           this.detectedValue = value;
+          this.lastFormat = format;
           this.active = false;
           this.status = 'detected';
           this.$dispatch('code-detected', { value, format });
@@ -406,6 +468,9 @@ document.addEventListener('alpine:init', () => {
           this.status = info.state;
           if (info.state === 'confirming') {
             this.confirmProgress = info.progress;
+          }
+          if (info.state === 'detector_ready') {
+            this.engine = info.engine;
           }
         },
       });
@@ -423,6 +488,7 @@ document.addEventListener('alpine:init', () => {
       const value = this.manualValue.trim();
       if (!value) return;
       this.detectedValue = value;
+      this.lastFormat = 'manual';
       this.status = 'detected';
       this.$dispatch('code-detected', { value, format: 'manual' });
     },
@@ -430,7 +496,39 @@ document.addEventListener('alpine:init', () => {
     get canScan() {
       return SamyScanner.hasCameraSupport() && SamyScanner.isSecureContext();
     },
+
+    /**
+     * Capacidades reales del equipo. La pantalla de diagnostico las muestra
+     * tal cual: cuando un cajero reporta "no me lee", esto separa en un
+     * vistazo un problema de camara de un recibo mal impreso.
+     */
+    get caps() {
+      return {
+        camera: SamyScanner.hasCameraSupport(),
+        secure: SamyScanner.isSecureContext(),
+        native: SamyScanner.hasNativeDetector(),
+      };
+    },
+
+    get engineLabel() {
+      if (this.engine === 'native') return 'nativo del navegador';
+      if (this.engine === 'zxing') return 'ZXing (respaldo)';
+      return this.lastFormat === 'manual' ? 'captura manual' : '-';
+    },
   }));
-});
+}
+
+// El orden importa: Alpine dispara "alpine:init" y arranca en cuanto se
+// ejecuta su script. Si este archivo llega antes (el caso normal, porque
+// base.html carga Alpine al final), se espera al evento. Si por lo que sea
+// Alpine ya estaba cargado, se registra en el acto para no perder el tren.
+if (window.Alpine) {
+  registrarComponenteAlpine();
+} else {
+  document.addEventListener('alpine:init', registrarComponenteAlpine);
+}
+
+/** Descargas de scripts en curso, para no pedir el mismo archivo dos veces. */
+SamyScanner._pendingScripts = {};
 
 window.SamyScanner = SamyScanner;

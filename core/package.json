@@ -2,16 +2,21 @@
   "name": "samy-cloud-frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "Compilacion de CSS de SAMY Cloud (Tailwind v4).",
+  "description": "Compilacion de CSS y archivos de terceros de SAMY Cloud (Tailwind v4).",
   "scripts": {
     "build:css": "tailwindcss -i ./assets/app.css -o ./static/css/app.css --minify",
-    "watch:css": "tailwindcss -i ./assets/app.css -o ./static/css/app.css --watch"
+    "watch:css": "tailwindcss -i ./assets/app.css -o ./static/css/app.css --watch",
+    "vendor": "node ./tools/vendor-assets.mjs",
+    "build": "npm run vendor && npm run build:css"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.0",
     "tailwindcss": "^4.1.0"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "^5.2.0"
+    "@fontsource-variable/inter": "^5.2.0",
+    "@zxing/library": "^0.21.3",
+    "alpinejs": "^3.14.0",
+    "htmx.org": "^2.0.0"
   }
 }

@@ -35,3 +35,22 @@ AXES_FAILURE_LIMIT = 20
 INSTALLED_APPS = INSTALLED_APPS + ["django_extensions"] if env.bool(
     "USE_DJANGO_EXTENSIONS", default=False
 ) else INSTALLED_APPS
+
+# --- Archivos estaticos en desarrollo ----------------------------------------
+# En produccion se usa el almacenamiento con manifiesto: cada archivo lleva un
+# hash en el nombre, lo que permite cachearlo para siempre. Ese almacenamiento
+# exige que TODO archivo referenciado con {% static %} exista ya en el
+# manifiesto, asi que en desarrollo cualquier archivo nuevo revienta con un 500
+# hasta ejecutar collectstatic.
+#
+# Al desarrollar eso solo estorba: aqui se sirve el archivo tal cual, sin hash
+# y sin manifiesto. La compresion y el cacheado agresivo siguen activos en
+# produccion, que es donde importan.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
