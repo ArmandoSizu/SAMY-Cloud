@@ -1,0 +1,19 @@
+-r requirements.txt
+
+# Pruebas
+pytest==9.1.1
+pytest-django==4.14.0
+pytest-cov==7.0.0
+factory-boy==3.3.3
+responses==0.26.3
+freezegun==1.5.1
+
+# Calidad
+ruff==0.16.6
+mypy==2.3.1
+django-stubs[compatible-mypy]==6.1.0
+djangorestframework-stubs==3.16.4
+
+# Desarrollo
+django-extensions==4.1
+ipython==9.6.0

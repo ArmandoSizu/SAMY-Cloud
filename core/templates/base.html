@@ -1,0 +1,56 @@
+{% load static %}<!DOCTYPE html>
+<html lang="es-MX" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}{{ BRAND_FULL }}{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Plataforma de recargas, pago de servicios y cobros para tu negocio.{% endblock %}">
+
+  {# Color de la barra del navegador en celular: continua con el fondo de la app. #}
+  <meta name="theme-color" content="#ffffff">
+  <meta name="color-scheme" content="light">
+
+  <link rel="icon" href="{% static 'brand/samy-mark.svg' %}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{% static 'brand/samy-mark.svg' %}">
+  <link rel="manifest" href="{% url 'dashboard:manifest' %}">
+
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+
+  {# HTMX y Alpine se sirven desde nuestro propio origen, no desde un CDN.
+     Motivo: la CSP de produccion no permite 'unsafe-inline' ni origenes
+     externos para scripts, y depender de un CDN de terceros en un sistema
+     que cobra dinero anade un punto de fallo y de riesgo de suministro. #}
+  <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+  <script src="{% static 'vendor/alpine.min.js' %}" defer></script>
+
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="h-full antialiased" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+
+  <a href="#contenido"
+     class="sr-only-focusable absolute left-4 top-4 z-50 rounded-lg bg-white px-4 py-2 shadow">
+    Saltar al contenido
+  </a>
+
+  {% block layout %}{% endblock %}
+
+  {# Region de anuncios para lectores de pantalla: los cambios de estado que
+     ocurren via HTMX no generan navegacion, asi que hay que anunciarlos. #}
+  <div id="sr-announcer" class="sr-only" role="status" aria-live="polite"></div>
+
+  <div class="toast-stack no-print" id="toasts" aria-live="polite">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="toast" role="alert" x-data="{ open: true }" x-show="open"
+             x-init="setTimeout(() => open = false, 6000)">
+          <span class="flex-1">{{ message }}</span>
+          <button type="button" @click="open = false"
+                  class="shrink-0 opacity-70 hover:opacity-100" aria-label="Cerrar aviso">&times;</button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

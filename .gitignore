@@ -1,0 +1,98 @@
+# =============================================================================
+# SAMY Cloud
+# =============================================================================
+
+# --- Secretos: NUNCA se versionan --------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials.json
+service-account*.json
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib60/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Entornos virtuales -------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# --- Django -------------------------------------------------------------------
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/media/
+staticfiles/
+/static_collected/
+
+# Las migraciones SI se versionan: son parte del esquema y deben aplicarse en
+# el mismo orden en todos los entornos. Solo se ignora __pycache__.
+**/migrations/__pycache__/
+
+# --- Pruebas y calidad --------------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.hypothesis/
+
+# --- Node / Tailwind ----------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+# CSS generado: se compila en el build, no se versiona.
+core/static/css/app.css
+core/static/css/app.css.map
+
+# --- Editores -----------------------------------------------------------------
+.vscode/
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Docker -------------------------------------------------------------------
+docker-compose.override.yml
+
+# --- Sistema ------------------------------------------------------------------
+*.bak
+*.tmp
+.cache/

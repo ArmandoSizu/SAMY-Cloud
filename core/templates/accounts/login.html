@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Iniciar sesion &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% block layout %}
+{#
+  Pantalla de acceso.
+
+  Dos paneles en escritorio: el formulario a la izquierda (donde cae la vista
+  primero al leer) y un panel de marca a la derecha que se oculta por completo
+  en celular, porque ahi el unico objetivo es entrar rapido.
+
+  El panel de marca es tipografia y espacio, no una ilustracion decorativa:
+  comunica que hace el producto sin ruido visual.
+#}
+<main class="min-h-full lg:grid lg:grid-cols-[1fr_1.1fr]">
+
+  <!-- Formulario -->
+  <div class="flex min-h-screen flex-col justify-center bg-white px-5 py-10 sm:px-10 lg:min-h-full lg:px-16">
+    <div class="mx-auto w-full max-w-sm">
+
+      <img src="{% static 'brand/samy-logo.svg' %}" alt="{{ BRAND_FULL }}" class="mb-10 h-9 w-auto">
+
+      <h1 class="text-2xl font-semibold tracking-tight">Inicia sesion</h1>
+      <p class="mt-1.5 text-[var(--color-ink-500)]">
+        Accede al panel de tu negocio.
+      </p>
+
+      {% if form.non_field_errors %}
+        <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
+             style="border-color: var(--color-danger-600); background: var(--color-danger-100); color: var(--color-danger-600);"
+             role="alert">
+          {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+        </div>
+      {% endif %}
+
+      {% if locked_out %}
+        <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
+             style="border-color: var(--color-warning-600); background: var(--color-warning-100); color: var(--color-warning-600);"
+             role="alert">
+          <p class="font-medium">Cuenta bloqueada temporalmente</p>
+          <p class="mt-1">Demasiados intentos fallidos. Vuelve a intentar en unos minutos.</p>
+        </div>
+      {% endif %}
+
+      <form method="post" class="mt-7 space-y-5" novalidate>
+        {% csrf_token %}
+
+        <div>
+          <label for="{{ form.username.id_for_label }}" class="field-label">Correo electronico</label>
+          {# inputmode y autocomplete correctos: en celular abren el teclado de
+             correo y permiten autocompletar con el gestor de contrasenas. #}
+          <input type="email"
+                 name="{{ form.username.html_name }}"
+                 id="{{ form.username.id_for_label }}"
+                 class="input {% if form.username.errors %}input-error{% endif %}"
+                 value="{{ form.username.value|default:'' }}"
+                 autocomplete="username"
+                 inputmode="email"
+                 autocapitalize="none"
+                 spellcheck="false"
+                 required
+                 autofocus
+                 placeholder="tu@negocio.mx"
+                 {% if form.username.errors %}aria-invalid="true" aria-describedby="err-username"{% endif %}>
+          {% if form.username.errors %}
+            <p class="field-error" id="err-username">{{ form.username.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <div>
+          <div class="mb-1.5 flex items-baseline justify-between">
+            <label for="{{ form.password.id_for_label }}" class="field-label mb-0">Contrasena</label>
+            <a href="{% url 'accounts:password_reset' %}"
+               class="text-sm font-medium" style="color: var(--color-accent-600);">Olvide mi contrasena</a>
+          </div>
+          <div x-data="{ show: false }" class="relative">
+            <input :type="show ? 'text' : 'password'"
+                   type="password"
+                   name="{{ form.password.html_name }}"
+                   id="{{ form.password.id_for_label }}"
+                   class="input pr-12 {% if form.password.errors %}input-error{% endif %}"
+                   autocomplete="current-password"
+                   required
+                   {% if form.password.errors %}aria-invalid="true" aria-describedby="err-password"{% endif %}>
+            <button type="button" @click="show = !show" tabindex="-1"
+                    class="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--color-ink-400)] hover:text-[var(--color-ink-700)]"
+                    :aria-label="show ? 'Ocultar contrasena' : 'Mostrar contrasena'">
+              <svg x-show="!show" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.04 12.32a1.01 1.01 0 0 1 0-.64C3.42 7.51 7.36 4.5 12 4.5s8.57 3.01 9.96 7.18c.07.2.07.44 0 .64C20.58 16.49 16.64 19.5 12 19.5s-8.57-3.01-9.96-7.18Z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+              </svg>
+              <svg x-show="show" x-cloak class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.22A10.5 10.5 0 0 0 2.04 11.68a1.01 1.01 0 0 0 0 .64C3.42 16.49 7.36 19.5 12 19.5c.99 0 1.95-.14 2.86-.4M6.23 6.23A10.45 10.45 0 0 1 12 4.5c4.64 0 8.57 3.01 9.96 7.18.07.2.07.44 0 .64a10.53 10.53 0 0 1-4.29 5.45M6.23 6.23 3 3m3.23 3.23 3.65 3.65m7.2 7.2L21 21m-3.92-3.92-3.65-3.65m0 0a3 3 0 1 0-4.24-4.24m4.24 4.24L9.88 9.88"/>
+              </svg>
+            </button>
+          </div>
+          {% if form.password.errors %}
+            <p class="field-error" id="err-password">{{ form.password.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg">
+          Entrar
+        </button>
+
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      </form>
+
+      <p class="mt-8 text-center text-xs text-[var(--color-ink-400)]">
+        Conexion cifrada. Tu sesion se cierra automaticamente tras 8 horas de inactividad.
+      </p>
+    </div>
+  </div>
+
+  <!-- Panel de marca: solo escritorio -->
+  <div class="relative hidden lg:flex lg:flex-col lg:justify-between lg:px-16 lg:py-14"
+       style="background: var(--color-ink-950);">
+    <div>
+      <div class="flex items-center gap-3">
+        <img src="{% static 'brand/samy-mark.svg' %}" alt="" class="h-9 w-9" aria-hidden="true">
+        <span class="text-lg font-semibold text-white">SAMY <span class="font-normal text-[var(--color-ink-400)]">Cloud</span></span>
+      </div>
+    </div>
+
+    <div class="max-w-md">
+      <h2 class="text-3xl font-semibold leading-snug tracking-tight text-white">
+        Recargas, servicios y cobros<br>desde un solo panel.
+      </h2>
+      <p class="mt-5 leading-relaxed text-[var(--color-ink-400)]">
+        Opera desde el celular, la tablet o la computadora del mostrador.
+        Cada operacion queda registrada, conciliada y con comprobante.
+      </p>
+
+      <dl class="mt-12 grid grid-cols-3 gap-8 border-t pt-8" style="border-color: rgb(255 255 255 / 0.1);">
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-[var(--color-ink-500)]">Operacion</dt>
+          <dd class="mt-1.5 text-sm text-[var(--color-ink-300)]">Pago confirmado antes de ejecutar</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-[var(--color-ink-500)]">Trazabilidad</dt>
+          <dd class="mt-1.5 text-sm text-[var(--color-ink-300)]">Auditoria completa por transaccion</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-[var(--color-ink-500)]">Acceso</dt>
+          <dd class="mt-1.5 text-sm text-[var(--color-ink-300)]">Roles por tienda y por empleado</dd>
+        </div>
+      </dl>
+    </div>
+
+    <p class="text-xs text-[var(--color-ink-600)]">
+      &copy; {% now "Y" %} SAMY Cloud &middot; v{{ SERVICE_VERSION }}
+    </p>
+  </div>
+</main>
+{% endblock %}
+
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}

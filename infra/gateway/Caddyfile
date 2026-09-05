@@ -1,0 +1,46 @@
+# =============================================================================
+# SAMY Cloud - Proxy inverso (desarrollo)
+# =============================================================================
+#
+# Unico punto de entrada. El navegador solo conoce este origen.
+#
+# Por que un proxy delante incluso en desarrollo:
+#   - Reproduce la topologia de produccion (TLS terminado aqui, cabeceras
+#     X-Forwarded-*). Si Django solo se prueba sin proxy, los bugs de
+#     SECURE_PROXY_SSL_HEADER aparecen recien en produccion.
+#   - Sirve los archivos estaticos sin pasar por Python.
+#   - Deja el camino listo para HTTPS automatico: en produccion basta cambiar
+#     ":8000" por el dominio y Caddy gestiona el certificado con Let's Encrypt.
+# =============================================================================
+
+{
+	# En desarrollo no se emiten certificados.
+	auto_https off
+	admin off
+}
+
+:8000 {
+	encode zstd gzip
+
+	# Archivos estaticos servidos directamente por Caddy.
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+		header Cache-Control "public, max-age=31536000, immutable"
+	}
+
+	# Todo lo demas va al Core Platform. Los microservicios NO se exponen:
+	# solo el Core habla con ellos, por la red interna y con peticiones
+	# firmadas.
+	handle {
+		reverse_proxy core:8000 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

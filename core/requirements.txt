@@ -1,0 +1,51 @@
+# =============================================================================
+# Core Platform - dependencias
+# =============================================================================
+# Versiones fijadas con limite superior de major: en un sistema que mueve
+# dinero, una actualizacion mayor no entra sin revisar el changelog.
+#
+# Django 5.2 LTS (no 6.x): soporte de seguridad hasta abril de 2028. Para un
+# producto que se piensa comercializar, la ventana de soporte pesa mas que
+# tener la version mas reciente. Ver docs/architecture.md.
+# =============================================================================
+
+Django==5.2.17
+djangorestframework==3.18.0
+drf-spectacular==0.30.0
+
+# Base de datos
+psycopg[binary,pool]==3.3.5
+
+# Configuracion por entorno
+django-environ==0.14.0
+
+# Frontend
+django-htmx==1.29.0
+whitenoise[brotli]==6.12.0
+
+# Seguridad
+argon2-cffi==25.1.0
+django-axes==8.3.1
+django-csp==4.0
+django-permissions-policy==4.33.0
+
+# Cache, cola y eventos
+redis==6.4.0
+celery==5.6.3
+
+# Observabilidad
+structlog==26.1.0
+
+# Cliente HTTP para S2S
+httpx==0.28.1
+tenacity==9.1.4
+
+# Servidor de aplicacion
+gunicorn==26.2.0
+
+# Almacenamiento en nube (opcional, se activa con USE_OBJECT_STORAGE)
+django-storages[s3]==1.14.6
+
+# Utilidades
+Pillow==12.3.0
+qrcode[pil]==8.2

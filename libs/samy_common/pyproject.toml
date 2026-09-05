@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "samy-common"
+version = "0.1.0"
+description = "Nucleo compartido de SAMY Cloud: dinero, estados, firma S2S, idempotencia y observabilidad."
+requires-python = ">=3.12"
+license = "Proprietary"
+authors = [{ name = "SAMY Cloud" }]
+
+# Dependencias minimas y con limite superior de major: una actualizacion mayor
+# no debe entrar sin revision en un sistema que mueve dinero.
+dependencies = [
+    "Django>=5.2,<6.0",
+    "httpx>=0.28,<0.29",
+    "redis>=6.0,<9.0",
+    "structlog>=25.0,<27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-django>=4.9",
+    "mypy>=1.13",
+    "ruff>=0.8",
+]
+
+[tool.setuptools.packages.find]
+include = ["samy_common*"]

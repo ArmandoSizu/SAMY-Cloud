@@ -1,0 +1,282 @@
+# =============================================================================
+# SAMY Cloud - Entorno de desarrollo
+# =============================================================================
+#
+# Levanta la plataforma completa: Core + 3 microservicios + proxy + Postgres +
+# Redis + worker de Celery.
+#
+# Decisiones que conviene entender antes de tocar este archivo:
+#
+# 1. UN contenedor de Postgres con CUATRO bases de datos separadas.
+#    En produccion cada microservicio tendra su propia instancia. En
+#    desarrollo, cuatro contenedores de Postgres consumirian ~1 GB de RAM sin
+#    aportar nada: lo que importa arquitectonicamente es que **ningun servicio
+#    puede leer las tablas de otro**, y eso se garantiza con bases y usuarios
+#    distintos, no con contenedores distintos. Cada servicio recibe una URL
+#    con credenciales que solo abren SU base.
+#
+# 2. Los microservicios NO publican puertos al host.
+#    Solo el proxy (8000) es accesible desde el navegador. Los servicios se
+#    hablan por la red interna de Docker. Esto reproduce la topologia real y
+#    evita la tentacion de que el frontend llame directamente a un servicio.
+#
+# 3. Sin secretos en este archivo. Todo sale de .env (que no se versiona).
+#
+# Uso:
+#   cp .env.example .env
+#   docker compose up -d --build
+#   docker compose exec core python manage.py migrate
+# =============================================================================
+
+name: samy-cloud
+
+# -----------------------------------------------------------------------------
+# Fragmentos reutilizables
+# -----------------------------------------------------------------------------
+x-django-common: &django-common
+  restart: unless-stopped
+  networks: [samy-internal]
+  env_file: [.env]
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+x-django-healthcheck: &django-healthcheck
+  test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/', timeout=4).status==200 else 1)"]
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 40s
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Datos
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-samy}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Define POSTGRES_SUPERUSER_PASSWORD en .env}
+      POSTGRES_DB: postgres
+      # C.UTF-8 da ordenamiento estable e independiente de la version de libc.
+      POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Crea las cuatro bases y sus usuarios en el primer arranque.
+      - ./infra/docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      # Expuesto solo en localhost para poder inspeccionar con un cliente SQL.
+      # Nunca 0.0.0.0: eso abriria la base de datos a la red local.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER:-samy} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [samy-internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # appendonly: los locks de idempotencia y el outbox no deben perderse
+    # en un reinicio del contenedor.
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [samy-internal]
+
+  # ---------------------------------------------------------------------------
+  # Core Platform (autenticacion, tenants, UI, BFF)
+  # ---------------------------------------------------------------------------
+  core:
+    <<: *django-common
+    build:
+      context: .
+      dockerfile: infra/docker/django.Dockerfile
+      args:
+        SERVICE_PATH: core
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SERVICE_NAME: core
+    volumes:
+      - ./core:/app:cached
+      - ./libs/samy_common:/libs/samy_common:cached
+      - core-static:/app/staticfiles
+    command: python manage.py runserver 0.0.0.0:8000
+    healthcheck: *django-healthcheck
+
+  # ---------------------------------------------------------------------------
+  # Microservicio 1: Pagos y comisiones
+  # ---------------------------------------------------------------------------
+  payments:
+    <<: *django-common
+    build:
+      context: .
+      dockerfile: infra/docker/django.Dockerfile
+      args:
+        SERVICE_PATH: services/payments
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SERVICE_NAME: payments
+    volumes:
+      - ./services/payments:/app:cached
+      - ./libs/samy_common:/libs/samy_common:cached
+    command: python manage.py runserver 0.0.0.0:8000
+    healthcheck: *django-healthcheck
+
+  payments-worker:
+    <<: *django-common
+    build:
+      context: .
+      dockerfile: infra/docker/django.Dockerfile
+      args:
+        SERVICE_PATH: services/payments
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SERVICE_NAME: payments-worker
+    volumes:
+      - ./services/payments:/app:cached
+      - ./libs/samy_common:/libs/samy_common:cached
+    # El worker drena el outbox, procesa webhooks diferidos, expira ordenes
+    # y concilia operaciones en estado indeterminado.
+    command: celery -A config.celery worker --beat --loglevel=info --concurrency=2
+    depends_on:
+      payments:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Microservicio 2: Recargas telefonicas
+  # ---------------------------------------------------------------------------
+  topups:
+    <<: *django-common
+    build:
+      context: .
+      dockerfile: infra/docker/django.Dockerfile
+      args:
+        SERVICE_PATH: services/topups
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SERVICE_NAME: topups
+    volumes:
+      - ./services/topups:/app:cached
+      - ./libs/samy_common:/libs/samy_common:cached
+    command: python manage.py runserver 0.0.0.0:8000
+    healthcheck: *django-healthcheck
+
+  topups-worker:
+    <<: *django-common
+    build:
+      context: .
+      dockerfile: infra/docker/django.Dockerfile
+      args:
+        SERVICE_PATH: services/topups
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SERVICE_NAME: topups-worker
+    volumes:
+      - ./services/topups:/app:cached
+      - ./libs/samy_common:/libs/samy_common:cached
+    command: celery -A config.celery worker --beat --loglevel=info --concurrency=2
+    depends_on:
+      topups:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Microservicio 3: Pago de servicios
+  # ---------------------------------------------------------------------------
+  billpay:
+    <<: *django-common
+    build:
+      context: .
+      dockerfile: infra/docker/django.Dockerfile
+      args:
+        SERVICE_PATH: services/billpay
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SERVICE_NAME: billpay
+    volumes:
+      - ./services/billpay:/app:cached
+      - ./libs/samy_common:/libs/samy_common:cached
+    command: python manage.py runserver 0.0.0.0:8000
+    healthcheck: *django-healthcheck
+
+  billpay-worker:
+    <<: *django-common
+    build:
+      context: .
+      dockerfile: infra/docker/django.Dockerfile
+      args:
+        SERVICE_PATH: services/billpay
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SERVICE_NAME: billpay-worker
+    volumes:
+      - ./services/billpay:/app:cached
+      - ./libs/samy_common:/libs/samy_common:cached
+    command: celery -A config.celery worker --beat --loglevel=info --concurrency=2
+    depends_on:
+      billpay:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Proxy inverso: unico punto de entrada
+  # ---------------------------------------------------------------------------
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./infra/gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - core-static:/srv/static:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      core:
+        condition: service_started
+    networks: [samy-internal]
+
+  # ---------------------------------------------------------------------------
+  # Compilacion de CSS en modo vigilancia (solo desarrollo)
+  # ---------------------------------------------------------------------------
+  tailwind:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./core:/app:cached
+    command: sh -c "npm install --no-audit --no-fund && npm run watch:css"
+    profiles: [frontend]
+    networks: [samy-internal]
+
+networks:
+  samy-internal:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  core-static:
+  caddy-data:
+  caddy-config:
