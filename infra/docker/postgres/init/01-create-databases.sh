@@ -42,9 +42,27 @@ SQL
 
 echo "== SAMY Cloud: inicializando bases de datos por servicio =="
 
-create_service_db "samy_core"     "samy_core"     "${CORE_DB_PASSWORD:-samy_core_dev}"
-create_service_db "samy_payments" "samy_payments" "${PAYMENTS_DB_PASSWORD:-samy_payments_dev}"
-create_service_db "samy_topups"   "samy_topups"   "${TOPUPS_DB_PASSWORD:-samy_topups_dev}"
-create_service_db "samy_billpay"  "samy_billpay"  "${BILLPAY_DB_PASSWORD:-samy_billpay_dev}"
+require_password() {
+  local name="$1"
+  local value="$2"
+  if [ -z "$value" ]; then
+    echo "ERROR: falta la variable ${name}." >&2
+    echo "  El servicio 'postgres' debe recibirla en docker-compose.yml." >&2
+    echo "  Sin ella se crearia un usuario con una clave que no coincide con" >&2
+    echo "  la cadena *_DATABASE_URL, y las migraciones fallarian con un" >&2
+    echo "  'password authentication failed' dificil de diagnosticar." >&2
+    exit 1
+  fi
+}
+
+require_password "CORE_DB_PASSWORD"     "${CORE_DB_PASSWORD:-}"
+require_password "PAYMENTS_DB_PASSWORD" "${PAYMENTS_DB_PASSWORD:-}"
+require_password "TOPUPS_DB_PASSWORD"   "${TOPUPS_DB_PASSWORD:-}"
+require_password "BILLPAY_DB_PASSWORD"  "${BILLPAY_DB_PASSWORD:-}"
+
+create_service_db "samy_core"     "samy_core"     "${CORE_DB_PASSWORD}"
+create_service_db "samy_payments" "samy_payments" "${PAYMENTS_DB_PASSWORD}"
+create_service_db "samy_topups"   "samy_topups"   "${TOPUPS_DB_PASSWORD}"
+create_service_db "samy_billpay"  "samy_billpay"  "${BILLPAY_DB_PASSWORD}"
 
 echo "== Bases de datos listas =="

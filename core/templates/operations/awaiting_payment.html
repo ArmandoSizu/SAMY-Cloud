@@ -1,0 +1,51 @@
+{% extends "_app.html" %}
+
+{% block title %}Esperando pago &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Pantalla intermedia mientras el cliente completa el pago con tarjeta.
+
+  El estado lo decide el webhook FIRMADO del proveedor, no esta pantalla. Por
+  eso aqui solo se consulta el estado real cada tres segundos; no hay ningun
+  boton de "ya pague" que el cajero pueda pulsar para forzarlo.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-lg">
+  <div class="surface surface-pad text-center">
+    <span class="mx-auto mb-4 inline-flex" style="color: var(--color-accent-600);">
+      {% include "_icons.html" with name="spinner" %}
+    </span>
+
+    <h1 class="text-xl font-semibold">Esperando la confirmacion del pago</h1>
+    <p class="mt-2 text-[var(--color-ink-500)]">
+      El pago lo confirma el proveedor, no esta pantalla.
+      Se actualizara sola en cuanto llegue.
+    </p>
+
+    <p class="mt-5 text-3xl font-semibold tabular tracking-tight">{{ order.total_display }}</p>
+    <p class="mt-1 text-sm text-[var(--color-ink-400)]">Folio {{ order.folio }}</p>
+
+    {% if attempt.checkout_url %}
+      <a href="{{ attempt.checkout_url }}" target="_blank" rel="noopener noreferrer"
+         class="btn btn-primary btn-block btn-lg mt-6">
+        Abrir el checkout del proveedor
+      </a>
+      <p class="mt-2 text-xs text-[var(--color-ink-400)]">
+        Se abre en una pestaña nueva. Vuelve aqui al terminar.
+      </p>
+    {% endif %}
+  </div>
+
+  <div class="mt-4"
+       hx-get="{% url 'operations:status' order.id %}"
+       hx-trigger="every 3s"
+       hx-swap="innerHTML">
+    {% include "operations/_status.html" %}
+  </div>
+
+  <a href="{% url 'operations:receipt' order.id %}" class="btn btn-ghost btn-block mt-3">
+    Ver comprobante
+  </a>
+</div>
+{% endblock %}

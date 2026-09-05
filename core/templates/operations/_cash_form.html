@@ -1,0 +1,45 @@
+{% comment %} Cobro en efectivo.
+
+   Exige capturar cuanto entrego el cliente. No es burocracia: sin ese dato no
+   se puede calcular el cambio ni cuadrar el arqueo del turno, y marcar como
+   pagada una orden por la que no se recibio el total produce un faltante que
+   nadie puede explicar despues. {% endcomment %}
+<form hx-post="{% url 'operations:pay_cash' order.id %}"
+      hx-target="#cobro-efectivo"
+      hx-swap="innerHTML"
+      hx-indicator="#cobrando"
+      class="space-y-4">
+  {% csrf_token %}
+
+  <div>
+    <label for="amount_tendered" class="field-label">¿Con cuanto paga el cliente?</label>
+    <div class="relative">
+      <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-lg"
+            style="color: var(--color-ink-400);" aria-hidden="true">$</span>
+      <input type="number"
+             id="amount_tendered"
+             name="amount_tendered"
+             class="input pl-8 text-lg {% if error %}input-error{% endif %}"
+             inputmode="decimal"
+             step="0.01"
+             min="0"
+             placeholder="0.00"
+             value="{{ amount_value|default:'' }}"
+             required
+             {% if error %}aria-invalid="true" aria-describedby="err-cash"{% endif %}>
+    </div>
+    <p class="field-hint">Calculamos el cambio automaticamente.</p>
+  </div>
+
+  {% if error %}
+    <p class="field-error" id="err-cash" role="alert">
+      {% include "_icons.html" with name="alert" %}
+      {{ error }}
+    </p>
+  {% endif %}
+
+  <button type="submit" class="btn btn-primary btn-block btn-lg">
+    <span id="cobrando" class="htmx-indicator">{% include "_icons.html" with name="spinner" %}</span>
+    Confirmar cobro de {{ order.total_display }}
+  </button>
+</form>

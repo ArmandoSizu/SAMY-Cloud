@@ -1,0 +1,40 @@
+{% extends "_app.html" %}
+{% block title %}Auditoria &middot; {{ BRAND_FULL }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-5xl">
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Auditoria</h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">
+      Bitacora inmutable. Los registros no se pueden modificar ni borrar.
+    </p>
+  </header>
+
+  <div class="surface overflow-hidden">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Fecha</th><th>Accion</th><th>Usuario</th><th>Tienda</th><th>Cambio</th><th>IP</th></tr>
+        </thead>
+        <tbody>
+          {% for event in events %}
+            <tr>
+              <td class="whitespace-nowrap text-[var(--color-ink-500)]">{{ event.created_at|date:"d/m/y H:i:s" }}</td>
+              <td class="font-medium">{{ event.get_action_display }}</td>
+              <td class="text-[var(--color-ink-600)]">{{ event.actor_email|default:"sistema" }}</td>
+              <td class="text-[var(--color-ink-500)]">{{ event.store.code|default:"—" }}</td>
+              <td class="text-[var(--color-ink-500)]">
+                {% if event.previous_state or event.new_state %}
+                  <span class="tabular text-xs">{{ event.previous_state|default:"—" }} &rarr; {{ event.new_state|default:"—" }}</span>
+                {% else %}—{% endif %}
+              </td>
+              <td class="text-xs text-[var(--color-ink-400)]">{{ event.ip_address|default:"—" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="py-8 text-center text-[var(--color-ink-400)]">Sin eventos registrados.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

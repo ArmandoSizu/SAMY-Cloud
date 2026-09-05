@@ -1,0 +1,33 @@
+{% extends "_app.html" %}
+{% block title %}Tiendas &middot; {{ BRAND_FULL }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Tiendas</h1>
+  </header>
+  <div class="surface overflow-hidden">
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Tienda</th><th>Codigo</th><th>Organizacion</th><th>Ciudad</th><th class="num">Empleados</th><th>Estado</th></tr></thead>
+        <tbody>
+          {% for store in stores %}
+            <tr>
+              <td class="font-medium">{{ store.name }}</td>
+              <td>{{ store.code }}</td>
+              <td class="text-[var(--color-ink-500)]">{{ store.organization.name }}</td>
+              <td class="text-[var(--color-ink-500)]">{{ store.city|default:"—" }}</td>
+              <td class="num">{{ store.memberships.count }}</td>
+              <td>
+                {% if store.is_active %}<span class="badge badge-success">Activa</span>
+                {% else %}<span class="badge badge-neutral">Inactiva</span>{% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="py-8 text-center text-[var(--color-ink-400)]">Aun no hay tiendas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

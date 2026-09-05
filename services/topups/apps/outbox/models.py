@@ -7,7 +7,11 @@ por tanto su propio outbox.
 
 from __future__ import annotations
 
-from samy_common.events.outbox import AbstractOutboxEvent
+from samy_common.events.outbox import AbstractOutboxEvent, OutboxStatus
+
+# Se reexporta para que las tareas importen ambos desde aqui y no tengan que
+# conocer la ruta interna del paquete compartido.
+__all__ = ["OutboxEvent", "OutboxStatus"]
 
 
 class OutboxEvent(AbstractOutboxEvent):

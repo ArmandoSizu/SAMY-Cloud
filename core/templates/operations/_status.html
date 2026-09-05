@@ -1,0 +1,94 @@
+{% comment %} Estado de la operacion. Se refresca solo con HTMX mientras esta en curso.
+
+   Cada estado dice que paso Y que debe hacer el cajero. "FAILED" a secas no
+   le sirve a nadie de pie en un mostrador con un cliente enfrente. {% endcomment %}
+<div id="estado-operacion"
+     {% if order.state == "PAID" or order.state == "PROCESSING" %}
+       hx-get="{% url 'operations:status' order.id %}"
+       hx-trigger="every 3s"
+       hx-swap="outerHTML"
+     {% endif %}>
+
+  {% if order.state == "SUCCESS" %}
+    <div class="rounded-xl px-5 py-4" style="background: var(--color-success-100);">
+      <div class="flex items-start gap-3">
+        <span style="color: var(--color-success-600);">{% include "_icons.html" with name="check" %}</span>
+        <div>
+          <p class="font-semibold" style="color: var(--color-success-600);">Operacion completada</p>
+          <p class="mt-0.5 text-sm" style="color: var(--color-success-600);">
+            El pago se confirmo y el servicio se entrego.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  {% elif order.state == "PAID" or order.state == "PROCESSING" %}
+    <div class="rounded-xl px-5 py-4" style="background: var(--color-info-100);">
+      <div class="flex items-start gap-3">
+        <span style="color: var(--color-info-600);">{% include "_icons.html" with name="spinner" %}</span>
+        <div>
+          <p class="font-semibold" style="color: var(--color-info-600);">Pago confirmado, entregando el servicio</p>
+          <p class="mt-0.5 text-sm" style="color: var(--color-info-600);">
+            Esperando la confirmacion del proveedor. Esta pantalla se actualiza sola.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  {% elif order.state == "FAILED" or order.state == "REFUND_PENDING" %}
+    <div class="rounded-xl px-5 py-4" style="background: var(--color-danger-100);">
+      <div class="flex items-start gap-3">
+        <span style="color: var(--color-danger-600);">{% include "_icons.html" with name="alert" %}</span>
+        <div>
+          <p class="font-semibold" style="color: var(--color-danger-600);">El servicio no se pudo entregar</p>
+          <p class="mt-0.5 text-sm" style="color: var(--color-danger-600);">
+            {{ order.state_reason|default:"El proveedor rechazo la operacion." }}
+          </p>
+          <p class="mt-2 text-sm font-medium" style="color: var(--color-danger-600);">
+            El reembolso se genero automaticamente. Devuelve el dinero al cliente.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  {% elif order.state == "REFUNDED" %}
+    <div class="rounded-xl px-5 py-4" style="background: var(--color-ink-100);">
+      <p class="font-semibold">Operacion reembolsada</p>
+      <p class="mt-0.5 text-sm text-[var(--color-ink-600)]">{{ order.state_reason }}</p>
+    </div>
+
+  {% elif order.state == "UNDER_REVIEW" %}
+    <div class="rounded-xl px-5 py-4" style="background: var(--color-warning-100);">
+      <div class="flex items-start gap-3">
+        <span style="color: var(--color-warning-600);">{% include "_icons.html" with name="alert" %}</span>
+        <div>
+          <p class="font-semibold" style="color: var(--color-warning-600);">Operacion en revision</p>
+          <p class="mt-0.5 text-sm" style="color: var(--color-warning-600);">
+            No pudimos confirmar el resultado con el proveedor. Lo estamos verificando.
+          </p>
+          <p class="mt-2 text-sm font-bold" style="color: var(--color-warning-600);">
+            NO la repitas: podria cobrarse dos veces.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  {% elif order.state == "EXPIRED" or order.state == "CANCELLED" %}
+    <div class="rounded-xl px-5 py-4" style="background: var(--color-ink-100);">
+      <p class="font-semibold">
+        Operacion {% if order.state == "EXPIRED" %}expirada{% else %}cancelada{% endif %}
+      </p>
+      <p class="mt-0.5 text-sm text-[var(--color-ink-600)]">
+        No se realizo ningun cargo.
+      </p>
+    </div>
+
+  {% else %}
+    <div class="rounded-xl px-5 py-4" style="background: var(--color-ink-100);">
+      <p class="font-semibold">Esperando el pago</p>
+      <p class="mt-0.5 text-sm text-[var(--color-ink-600)]">
+        La operacion todavia no se ha cobrado.
+      </p>
+    </div>
+  {% endif %}
+</div>

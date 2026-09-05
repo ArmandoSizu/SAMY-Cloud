@@ -1,0 +1,136 @@
+{% extends "_app.html" %}
+
+{% block title %}Inicio &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Dashboard del cajero.
+
+  Su trabajo es despachar rapido, de pie, con una mano. Por eso la pantalla
+  tiene dos acciones grandes y nada mas. Sin graficas, sin metricas que no
+  puede accionar, sin tarjetas decorativas.
+
+  Los numeros del dia son SUS numeros (scope=own), no los de la tienda: un
+  cajero no ve los ingresos del negocio.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl">
+
+  <header class="mb-7">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">
+      Hola, {{ user.get_short_name }}
+    </h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">
+      {{ current_store.name }} &middot; {% now "l j \d\e F" %}
+    </p>
+  </header>
+
+  <!-- ============ Acciones principales ============ -->
+  <div class="grid gap-3 sm:grid-cols-2">
+    <a href="{% url 'topups:catalog' %}" class="action-tile group">
+      <div>
+        <div class="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl"
+             style="background: var(--color-accent-50); color: var(--color-accent-600);">
+          {% include "_icons.html" with name="phone" %}
+        </div>
+        <h2 class="text-lg font-semibold">Recargas</h2>
+        <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">Tiempo aire y paquetes</p>
+      </div>
+      <span class="mt-4 inline-flex items-center gap-1 text-sm font-medium"
+            style="color: var(--color-accent-600);">
+        Empezar
+        <svg class="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
+        </svg>
+      </span>
+    </a>
+
+    <a href="{% url 'billpay:catalog' %}" class="action-tile group">
+      <div>
+        <div class="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl"
+             style="background: var(--color-accent-50); color: var(--color-accent-600);">
+          {% include "_icons.html" with name="receipt" %}
+        </div>
+        <h2 class="text-lg font-semibold">Pago de servicios</h2>
+        <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">CFE, agua y mas</p>
+      </div>
+      <span class="mt-4 inline-flex items-center gap-1 text-sm font-medium"
+            style="color: var(--color-accent-600);">
+        Empezar
+        <svg class="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
+        </svg>
+      </span>
+    </a>
+  </div>
+
+  <!-- ============ Mi turno ============ -->
+  <section class="mt-9" aria-labelledby="turno">
+    <div class="mb-3 flex items-baseline justify-between">
+      <h2 id="turno" class="text-sm font-semibold uppercase tracking-wider"
+          style="color: var(--color-ink-500);">Mis operaciones de hoy</h2>
+      <a href="{% url 'operations:history' %}" class="text-sm font-medium"
+         style="color: var(--color-accent-600);">Ver historial</a>
+    </div>
+
+    {% if not summary.available %}
+      {% comment %} No se muestran ceros: "no pude consultar" y "no hubo operaciones" son
+         cosas distintas, y confundirlas en un panel de dinero es inaceptable. {% endcomment %}
+      <div class="surface surface-pad flex items-start gap-3">
+        <span style="color: var(--color-warning-600);">{% include "_icons.html" with name="alert" %}</span>
+        <div>
+          <p class="font-medium">No pudimos consultar tus operaciones</p>
+          <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">
+            El servicio de pagos no responde en este momento. Puedes seguir
+            operando con normalidad; esto solo afecta el resumen.
+          </p>
+        </div>
+      </div>
+    {% elif summary.total_operations == 0 %}
+      <div class="surface">
+        <div class="empty-state">
+          <div class="empty-state-icon">{% include "_icons.html" with name="empty-box" %}</div>
+          <p class="empty-state-title">Aun no has hecho operaciones hoy</p>
+          <p class="empty-state-text">
+            Cuando realices una recarga o cobres un servicio, aparecera aqui
+            con su comprobante.
+          </p>
+        </div>
+      </div>
+    {% else %}
+      <div class="surface surface-pad">
+        <dl class="grid grid-cols-3 gap-4">
+          <div>
+            <dt class="stat-label">Operaciones</dt>
+            <dd class="stat-value">{{ summary.total_operations }}</dd>
+          </div>
+          <div>
+            <dt class="stat-label">Exitosas</dt>
+            <dd class="stat-value" style="color: var(--color-success-600);">{{ summary.successful }}</dd>
+          </div>
+          <div>
+            <dt class="stat-label">Fallidas</dt>
+            <dd class="stat-value" {% if summary.failed %}style="color: var(--color-danger-600);"{% endif %}>
+              {{ summary.failed }}
+            </dd>
+          </div>
+        </dl>
+
+        {% if summary.under_review %}
+          <div class="mt-4 flex items-start gap-2.5 rounded-lg px-3 py-2.5"
+               style="background: var(--color-warning-100); color: var(--color-warning-600);">
+            <span class="mt-0.5">{% include "_icons.html" with name="alert" %}</span>
+            <p class="text-sm">
+              <strong>{{ summary.under_review }}</strong>
+              {{ summary.under_review|pluralize:"operacion esta,operaciones estan" }} en revision.
+              No {{ summary.under_review|pluralize:"la,las" }} repitas: se estan verificando con el proveedor.
+            </p>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

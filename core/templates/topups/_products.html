@@ -1,0 +1,68 @@
+{% comment %} Denominaciones y paquetes REALES del proveedor.
+
+   Cada monto que aparece aqui vino del catalogo del proveedor. Si no ofrece
+   $75, aqui no hay $75. Un monto que el proveedor no vende produciria un
+   fallo despues de haber cobrado. {% endcomment %}
+<div id="paso-numero">
+  <div class="surface surface-pad mb-4 flex items-center justify-between">
+    <div>
+      <p class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">Numero</p>
+      <p class="text-lg font-semibold tabular">{{ phone.pretty }}</p>
+    </div>
+    <button type="button"
+            class="btn btn-ghost btn-sm"
+            hx-get="{% url 'topups:phone' operator.id %}"
+            hx-target="body"
+            hx-push-url="true">Cambiar</button>
+  </div>
+
+  <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider"
+      style="color: var(--color-ink-500);">Paso 2 de 3 &middot; Elige el monto</h2>
+
+  {% if operator.products %}
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {% for product in operator.products %}
+        <form method="post" action="{% url 'topups:confirm' %}">
+          {% csrf_token %}
+          <input type="hidden" name="product_id" value="{{ product.id }}">
+
+          {% if product.is_open_amount %}
+            <div class="action-tile" style="min-height: 6.5rem;">
+              <label for="amount-{{ product.id }}" class="field-label">{{ product.label }}</label>
+              <input type="number"
+                     id="amount-{{ product.id }}"
+                     name="amount"
+                     class="input"
+                     inputmode="decimal"
+                     step="0.01"
+                     min="{{ product.min_amount_cents|default:1 }}"
+                     placeholder="Monto"
+                     required>
+              <button type="submit" class="btn btn-secondary btn-sm mt-2 w-full">Usar</button>
+            </div>
+          {% else %}
+            <button type="submit" class="action-tile w-full items-center justify-center text-center"
+                    style="min-height: 6.5rem;">
+              <span class="block text-2xl font-semibold tabular">{{ product.amount_display }}</span>
+              <span class="mt-1 block text-xs text-[var(--color-ink-500)]">{{ product.label }}</span>
+              {% if product.is_data_package %}
+                <span class="badge badge-accent mt-2">Datos</span>
+              {% endif %}
+            </button>
+          {% endif %}
+        </form>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="surface">
+      <div class="empty-state">
+        <div class="empty-state-icon">{% include "_icons.html" with name="empty-box" %}</div>
+        <p class="empty-state-title">Esta compañia no tiene productos disponibles</p>
+        <p class="empty-state-text">
+          El proveedor no devolvio denominaciones para {{ operator.name }}.
+          Elige otra compañia o pide al administrador que sincronice el catalogo.
+        </p>
+      </div>
+    </div>
+  {% endif %}
+</div>

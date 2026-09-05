@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% comment %}
+  Shell de la aplicacion autenticada.
+
+  Escritorio: barra lateral fija a la izquierda.
+  Celular: barra superior compacta + barra inferior de navegacion, como una
+  app nativa. El cajero opera de pie y con una mano; los accesos van abajo,
+  donde llega el pulgar.
+{% endcomment %}
+
+{% block layout %}
+<div class="min-h-screen lg:flex">
+
+  <!-- ================= Barra lateral (escritorio) ================= -->
+  <aside class="hidden lg:flex lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:bg-white no-print"
+         style="border-color: var(--color-ink-200);">
+    <div class="flex h-16 items-center px-5">
+      <a href="{% url 'dashboard:home' %}" class="flex items-center">
+        <img src="{% static 'brand/samy-logo.svg' %}" alt="{{ BRAND_FULL }}" class="h-7 w-auto">
+      </a>
+    </div>
+
+    <nav class="flex-1 space-y-0.5 px-3 py-3" aria-label="Navegacion principal">
+      {% url 'dashboard:home' as url_home %}
+      <a href="{{ url_home }}" class="nav-link {% if request.path == url_home %}nav-link-active{% endif %}">
+        {% include "_icons.html" with name="home" %}
+        Inicio
+      </a>
+
+      <a href="{% url 'topups:catalog' %}"
+         class="nav-link {% if '/recargas/' in request.path %}nav-link-active{% endif %}">
+        {% include "_icons.html" with name="phone" %}
+        Recargas
+      </a>
+
+      <a href="{% url 'billpay:catalog' %}"
+         class="nav-link {% if '/servicios/' in request.path %}nav-link-active{% endif %}">
+        {% include "_icons.html" with name="receipt" %}
+        Servicios
+      </a>
+
+      <a href="{% url 'operations:history' %}"
+         class="nav-link {% if '/operaciones/' in request.path %}nav-link-active{% endif %}">
+        {% include "_icons.html" with name="clock" %}
+        Historial
+      </a>
+
+      {% if user.is_platform_admin %}
+        <div class="pt-4">
+          <p class="px-3 pb-1 text-2xs font-semibold uppercase tracking-wider"
+             style="color: var(--color-ink-400);">Plataforma</p>
+          <a href="{% url 'platform_admin:home' %}"
+             class="nav-link {% if '/plataforma/' in request.path %}nav-link-active{% endif %}">
+            {% include "_icons.html" with name="shield" %}
+            Panel SAMY
+          </a>
+        </div>
+      {% endif %}
+    </nav>
+
+    <!-- Tienda activa + usuario -->
+    <div class="border-t px-3 py-3" style="border-color: var(--color-ink-200);">
+      {% if current_store %}
+        <div class="mb-2 rounded-lg px-3 py-2" style="background: var(--color-ink-50);">
+          <p class="text-2xs uppercase tracking-wider" style="color: var(--color-ink-400);">Tienda</p>
+          <p class="truncate text-sm font-medium">{{ current_store.name }}</p>
+          {% if can_switch_store %}
+            <details class="mt-1.5">
+              <summary class="cursor-pointer text-xs" style="color: var(--color-accent-600);">Cambiar</summary>
+              <div class="mt-1.5 space-y-1">
+                {% for m in available_memberships %}
+                  {% if m.store_id != current_store.id %}
+                    <form method="post" action="{% url 'accounts:switch_store' m.store_id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-white">
+                        {{ m.store.name }}
+                      </button>
+                    </form>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </details>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <div class="flex items-center gap-2.5 px-1">
+        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+             style="background: var(--color-accent-100); color: var(--color-accent-700);"
+             aria-hidden="true">{{ user.initials }}</div>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-medium">{{ user.full_name }}</p>
+          <p class="truncate text-xs" style="color: var(--color-ink-400);">
+            {% if current_membership %}{{ current_membership.get_role_display }}
+            {% elif user.is_platform_admin %}Administrador{% endif %}
+          </p>
+        </div>
+        <form method="post" action="{% url 'accounts:logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-sm" title="Cerrar sesion" aria-label="Cerrar sesion">
+            {% include "_icons.html" with name="logout" %}
+          </button>
+        </form>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= Contenido ================= -->
+  <div class="flex min-w-0 flex-1 flex-col">
+
+    <!-- Barra superior (celular) -->
+    <header class="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-white px-4 lg:hidden no-print"
+            style="border-color: var(--color-ink-200);">
+      <a href="{% url 'dashboard:home' %}">
+        <img src="{% static 'brand/samy-logo.svg' %}" alt="{{ BRAND_FULL }}" class="h-6 w-auto">
+      </a>
+      <div class="flex items-center gap-2">
+        {% if current_store %}
+          <span class="badge badge-neutral">{{ current_store.code }}</span>
+        {% endif %}
+        <form method="post" action="{% url 'accounts:logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-sm" aria-label="Cerrar sesion">
+            {% include "_icons.html" with name="logout" %}
+          </button>
+        </form>
+      </div>
+    </header>
+
+    <main id="contenido" class="flex-1 px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Barra inferior (celular) -->
+    <nav class="tabbar no-print" style="grid-template-columns: repeat(4, minmax(0, 1fr));"
+         aria-label="Navegacion">
+      <a href="{% url 'dashboard:home' %}"
+         class="tabbar-item {% if request.path == url_home %}tabbar-item-active{% endif %}">
+        {% include "_icons.html" with name="home" %}
+        <span>Inicio</span>
+      </a>
+      <a href="{% url 'topups:catalog' %}"
+         class="tabbar-item {% if '/recargas/' in request.path %}tabbar-item-active{% endif %}">
+        {% include "_icons.html" with name="phone" %}
+        <span>Recargas</span>
+      </a>
+      <a href="{% url 'billpay:catalog' %}"
+         class="tabbar-item {% if '/servicios/' in request.path %}tabbar-item-active{% endif %}">
+        {% include "_icons.html" with name="receipt" %}
+        <span>Servicios</span>
+      </a>
+      <a href="{% url 'operations:history' %}"
+         class="tabbar-item {% if '/operaciones/' in request.path %}tabbar-item-active{% endif %}">
+        {% include "_icons.html" with name="clock" %}
+        <span>Historial</span>
+      </a>
+    </nav>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,115 @@
+{% extends "_app.html" %}
+
+{% block title %}Inicio &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Dashboard del dueño.
+
+  Ve ingresos y comisiones; el cajero no. Igual que en su pantalla, **no se
+  inventan cifras**: cuando no hay operaciones se muestra el estado vacio, y
+  cuando el servicio no responde se dice, en vez de mostrar ceros. Cero
+  significa "no hubo operaciones", no "no pude consultarlo".
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl">
+
+  <header class="mb-7">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">{{ current_store.name }}</h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">{% now "l j \d\e F, Y" %}</p>
+  </header>
+
+  <!-- Acciones -->
+  <div class="mb-8 grid gap-3 sm:grid-cols-2">
+    <a href="{% url 'topups:catalog' %}" class="action-tile group">
+      <div>
+        <div class="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl"
+             style="background: var(--color-accent-50); color: var(--color-accent-600);">
+          {% include "_icons.html" with name="phone" %}
+        </div>
+        <h2 class="text-lg font-semibold">Recargas</h2>
+        <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">Tiempo aire y paquetes</p>
+      </div>
+    </a>
+    <a href="{% url 'billpay:catalog' %}" class="action-tile group">
+      <div>
+        <div class="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl"
+             style="background: var(--color-accent-50); color: var(--color-accent-600);">
+          {% include "_icons.html" with name="receipt" %}
+        </div>
+        <h2 class="text-lg font-semibold">Pago de servicios</h2>
+        <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">CFE, agua y mas</p>
+      </div>
+    </a>
+  </div>
+
+  <!-- Resumen del dia -->
+  <section aria-labelledby="hoy">
+    <div class="mb-3 flex items-baseline justify-between">
+      <h2 id="hoy" class="text-sm font-semibold uppercase tracking-wider"
+          style="color: var(--color-ink-500);">Hoy</h2>
+      <a href="{% url 'operations:history' %}" class="text-sm font-medium"
+         style="color: var(--color-accent-600);">Ver todo</a>
+    </div>
+
+    {% if not summary.available %}
+      <div class="surface surface-pad flex items-start gap-3">
+        <span style="color: var(--color-warning-600);">{% include "_icons.html" with name="alert" %}</span>
+        <div>
+          <p class="font-medium">No pudimos consultar el resumen</p>
+          <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">
+            El servicio de pagos no responde. Esto no afecta la operacion de
+            la tienda, solo este panel.
+          </p>
+        </div>
+      </div>
+
+    {% elif summary.total_operations == 0 %}
+      <div class="surface">
+        <div class="empty-state">
+          <div class="empty-state-icon">{% include "_icons.html" with name="empty-box" %}</div>
+          <p class="empty-state-title">Sin operaciones hoy</p>
+          <p class="empty-state-text">
+            Cuando tu negocio realice una venta, veras aqui los ingresos y las
+            comisiones del dia.
+          </p>
+        </div>
+      </div>
+
+    {% else %}
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="surface surface-pad">
+          <p class="stat-label">Operaciones</p>
+          <p class="stat-value">{{ summary.total_operations }}</p>
+          <p class="mt-1 text-xs text-[var(--color-ink-500)]">
+            {{ summary.successful }} exitosas
+          </p>
+        </div>
+        <div class="surface surface-pad">
+          <p class="stat-label">Cobrado</p>
+          <p class="stat-value">${{ summary.gross_cents|floatformat:0|slice:":-2"|default:"0" }}</p>
+          <p class="mt-1 text-xs text-[var(--color-ink-500)]">Solo operaciones completadas</p>
+        </div>
+        <div class="surface surface-pad">
+          <p class="stat-label">Tu ganancia</p>
+          <p class="stat-value" style="color: var(--color-success-600);">
+            ${{ summary.store_earnings_cents|floatformat:0|slice:":-2"|default:"0" }}
+          </p>
+          <p class="mt-1 text-xs text-[var(--color-ink-500)]">Comisiones del dia</p>
+        </div>
+        <div class="surface surface-pad">
+          <p class="stat-label">Fallidas</p>
+          <p class="stat-value" {% if summary.failed %}style="color: var(--color-danger-600);"{% endif %}>
+            {{ summary.failed }}
+          </p>
+          {% if summary.under_review %}
+            <p class="mt-1 text-xs" style="color: var(--color-warning-600);">
+              {{ summary.under_review }} en revision
+            </p>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

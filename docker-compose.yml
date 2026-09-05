@@ -64,6 +64,14 @@ services:
       POSTGRES_DB: postgres
       # C.UTF-8 da ordenamiento estable e independiente de la version de libc.
       POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
+      # El script de inicializacion crea un usuario por servicio y necesita
+      # SUS contrasenas. Sin pasarlas aqui, el script caeria a sus valores por
+      # defecto y no coincidirian con las cadenas *_DATABASE_URL de .env, lo
+      # que produce un "password authentication failed" al migrar.
+      CORE_DB_PASSWORD: ${CORE_DB_PASSWORD:?Define CORE_DB_PASSWORD en .env}
+      PAYMENTS_DB_PASSWORD: ${PAYMENTS_DB_PASSWORD:?Define PAYMENTS_DB_PASSWORD en .env}
+      TOPUPS_DB_PASSWORD: ${TOPUPS_DB_PASSWORD:?Define TOPUPS_DB_PASSWORD en .env}
+      BILLPAY_DB_PASSWORD: ${BILLPAY_DB_PASSWORD:?Define BILLPAY_DB_PASSWORD en .env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       # Crea las cuatro bases y sus usuarios en el primer arranque.
@@ -156,6 +164,23 @@ services:
     # El worker drena el outbox, procesa webhooks diferidos, expira ordenes
     # y concilia operaciones en estado indeterminado.
     command: celery -A config.celery worker --beat --loglevel=info --concurrency=2
+    # El HEALTHCHECK de la imagen hace curl a :8000; un worker no sirve
+    # HTTP. Se sustituye por el ping de control de Celery, que si dice
+    # si el worker esta vivo y consumiendo.
+    #
+    # Dos detalles que lo hacian fallar aunque el worker estuviera sano:
+    #   1) En forma exec no hay shell, asi que "$HOSTNAME" viajaba literal y
+    #      se preguntaba por un nodo llamado "celery@$HOSTNAME" que no existe.
+    #      Con CMD-SHELL si hay shell y $(hostname) se resuelve de verdad.
+    #   2) En Celery 5 "--timeout" es opcion del grupo "inspect", no de "ping".
+    #      Puesto despues se ignoraba y regia el limite por omision de 1 s,
+    #      demasiado justo para el arranque del broker.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config.celery inspect --timeout 10 ping -d celery@$$(hostname) >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
     depends_on:
       payments:
         condition: service_started
@@ -195,6 +220,23 @@ services:
       - ./services/topups:/app:cached
       - ./libs/samy_common:/libs/samy_common:cached
     command: celery -A config.celery worker --beat --loglevel=info --concurrency=2
+    # El HEALTHCHECK de la imagen hace curl a :8000; un worker no sirve
+    # HTTP. Se sustituye por el ping de control de Celery, que si dice
+    # si el worker esta vivo y consumiendo.
+    #
+    # Dos detalles que lo hacian fallar aunque el worker estuviera sano:
+    #   1) En forma exec no hay shell, asi que "$HOSTNAME" viajaba literal y
+    #      se preguntaba por un nodo llamado "celery@$HOSTNAME" que no existe.
+    #      Con CMD-SHELL si hay shell y $(hostname) se resuelve de verdad.
+    #   2) En Celery 5 "--timeout" es opcion del grupo "inspect", no de "ping".
+    #      Puesto despues se ignoraba y regia el limite por omision de 1 s,
+    #      demasiado justo para el arranque del broker.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config.celery inspect --timeout 10 ping -d celery@$$(hostname) >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
     depends_on:
       topups:
         condition: service_started
@@ -234,6 +276,23 @@ services:
       - ./services/billpay:/app:cached
       - ./libs/samy_common:/libs/samy_common:cached
     command: celery -A config.celery worker --beat --loglevel=info --concurrency=2
+    # El HEALTHCHECK de la imagen hace curl a :8000; un worker no sirve
+    # HTTP. Se sustituye por el ping de control de Celery, que si dice
+    # si el worker esta vivo y consumiendo.
+    #
+    # Dos detalles que lo hacian fallar aunque el worker estuviera sano:
+    #   1) En forma exec no hay shell, asi que "$HOSTNAME" viajaba literal y
+    #      se preguntaba por un nodo llamado "celery@$HOSTNAME" que no existe.
+    #      Con CMD-SHELL si hay shell y $(hostname) se resuelve de verdad.
+    #   2) En Celery 5 "--timeout" es opcion del grupo "inspect", no de "ping".
+    #      Puesto despues se ignoraba y regia el limite por omision de 1 s,
+    #      demasiado justo para el arranque del broker.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config.celery inspect --timeout 10 ping -d celery@$$(hostname) >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
     depends_on:
       billpay:
         condition: service_started

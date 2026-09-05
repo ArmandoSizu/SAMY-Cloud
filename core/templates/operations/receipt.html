@@ -1,0 +1,134 @@
+{% extends "_app.html" %}
+
+{% block title %}Comprobante {{ order.folio }} &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Comprobante.
+
+  Muestra el estado REAL de la operacion. Si el pago ya se confirmo pero la
+  recarga sigue en curso, lo dice: no se anuncia un exito que todavia no
+  ocurrio. El bloque de estado se refresca solo con HTMX hasta que la
+  operacion termina.
+
+  El ancho es el de un ticket de punto de venta, y al imprimir solo sale el
+  comprobante (ver la regla @media print del sistema de diseño).
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-lg">
+
+  <!-- Cambio a devolver: lo primero que necesita el cajero -->
+  {% if change_cents %}
+    <div class="mb-5 rounded-xl px-5 py-4 text-center no-print"
+         style="background: var(--color-success-100);">
+      <p class="text-xs font-semibold uppercase tracking-wider"
+         style="color: var(--color-success-600);">Cambio a devolver</p>
+      <p class="mt-1 text-4xl font-semibold tabular tracking-tight"
+         style="color: var(--color-success-600);">{{ change_display }}</p>
+    </div>
+  {% endif %}
+
+  <!-- Estado, refrescado en vivo mientras la operacion esta en curso -->
+  <div id="estado-operacion"
+       {% if order.state == "PAID" or order.state == "PROCESSING" %}
+         hx-get="{% url 'operations:status' order.id %}"
+         hx-trigger="every 3s"
+         hx-swap="outerHTML"
+       {% endif %}>
+    {% include "operations/_status.html" %}
+  </div>
+
+  <!-- ================= Comprobante ================= -->
+  <div class="surface mt-5 p-6">
+    <div class="receipt">
+
+      <div class="text-center">
+        <p class="text-base font-bold tracking-tight">SAMY CLOUD</p>
+        <p class="mt-0.5 text-xs">{{ store.name }}</p>
+        {% if store.address %}<p class="text-xs">{{ store.address }}</p>{% endif %}
+        <p class="text-xs">{{ store.city }}{% if store.state %}, {{ store.state }}{% endif %}</p>
+      </div>
+
+      <div class="receipt-rule"></div>
+
+      <div class="receipt-row"><span>Folio</span><span class="font-bold">{{ order.folio }}</span></div>
+      <div class="receipt-row"><span>Fecha</span><span>{{ order.created_at|date:"d/m/Y H:i" }}</span></div>
+      <div class="receipt-row"><span>Cajero</span><span>{{ user.get_short_name }}</span></div>
+
+      <div class="receipt-rule"></div>
+
+      <div class="receipt-row"><span>Servicio</span><span>{{ order.description }}</span></div>
+
+      {% if fulfillment %}
+        {% if fulfillment.phone_masked %}
+          <div class="receipt-row"><span>Numero</span><span>{{ fulfillment.phone_masked }}</span></div>
+        {% endif %}
+        {% if fulfillment.reference_masked %}
+          <div class="receipt-row"><span>Referencia</span><span>{{ fulfillment.reference_masked }}</span></div>
+        {% endif %}
+        {% if fulfillment.operator_reference %}
+          <div class="receipt-row">
+            <span>Folio operador</span><span class="font-bold">{{ fulfillment.operator_reference }}</span>
+          </div>
+        {% endif %}
+        {% if fulfillment.biller_reference %}
+          <div class="receipt-row">
+            <span>Folio del servicio</span><span class="font-bold">{{ fulfillment.biller_reference }}</span>
+          </div>
+        {% endif %}
+      {% endif %}
+
+      <div class="receipt-rule"></div>
+
+      <div class="receipt-row"><span>Importe</span><span>{{ order.base_display }}</span></div>
+      <div class="receipt-row"><span>Comision</span><span>{{ order.commission_display }}</span></div>
+      <div class="receipt-row text-base font-bold">
+        <span>TOTAL</span><span>{{ order.total_display }}</span>
+      </div>
+      {% if change_cents %}
+        <div class="receipt-row"><span>Cambio</span><span>{{ change_display }}</span></div>
+      {% endif %}
+
+      <div class="receipt-rule"></div>
+
+      <div class="receipt-row">
+        <span>Estado</span>
+        <span class="font-bold">
+          {% if order.state == "SUCCESS" %}COMPLETADA
+          {% elif order.state == "PAID" %}PAGADA - EN PROCESO
+          {% elif order.state == "PROCESSING" %}EN PROCESO
+          {% elif order.state == "FAILED" %}FALLIDA
+          {% elif order.state == "REFUND_PENDING" %}REEMBOLSO PENDIENTE
+          {% elif order.state == "REFUNDED" %}REEMBOLSADA
+          {% elif order.state == "UNDER_REVIEW" %}EN REVISION
+          {% else %}{{ order.state }}{% endif %}
+        </span>
+      </div>
+      {% if order.payment_method %}
+        <div class="receipt-row"><span>Pago</span><span>{{ order.payment_method }}</span></div>
+      {% endif %}
+
+      {% if order.provider_mode == "SANDBOX" %}
+        <div class="receipt-rule"></div>
+        <p class="text-center text-xs font-bold">*** OPERACION DE PRUEBA ***</p>
+        <p class="text-center text-xs">Ambiente sandbox. Sin valor real.</p>
+      {% endif %}
+
+      <div class="receipt-rule"></div>
+      <p class="text-center text-xs">Conserva este comprobante</p>
+      <p class="text-center text-xs">{{ order.id }}</p>
+    </div>
+  </div>
+
+  <!-- ================= Acciones ================= -->
+  <div class="mt-5 flex gap-2 no-print">
+    <button type="button" onclick="window.print()" class="btn btn-secondary flex-1">
+      {% include "_icons.html" with name="print" %}
+      Imprimir
+    </button>
+    <a href="{% url 'dashboard:home' %}" class="btn btn-primary flex-1">Nueva operacion</a>
+  </div>
+
+  <a href="{% url 'operations:history' %}" class="btn btn-ghost btn-block mt-2 no-print">Ver historial</a>
+</div>
+{% endblock %}

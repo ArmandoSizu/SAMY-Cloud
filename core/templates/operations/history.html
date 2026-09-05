@@ -1,0 +1,102 @@
+{% extends "_app.html" %}
+
+{% block title %}Historial &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Historial.
+
+  El alcance lo decide el permiso del rol, no un parametro de la URL: un
+  cajero ve las suyas, un dueño ve las de la tienda.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Historial</h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">
+      {% if scope == "store" %}Operaciones de {{ current_store.name }}
+      {% else %}Tus operaciones{% endif %}
+    </p>
+  </header>
+
+  {% if unavailable %}
+    <div class="surface surface-pad flex items-start gap-3">
+      <span style="color: var(--color-warning-600);">{% include "_icons.html" with name="alert" %}</span>
+      <div>
+        <p class="font-medium">No pudimos cargar el historial</p>
+        <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">
+          El servicio de pagos no responde. Vuelve a intentar en unos segundos.
+        </p>
+      </div>
+    </div>
+
+  {% elif not orders %}
+    <div class="surface">
+      <div class="empty-state">
+        <div class="empty-state-icon">{% include "_icons.html" with name="empty-box" %}</div>
+        <p class="empty-state-title">Todavia no hay operaciones</p>
+        <p class="empty-state-text">
+          Cuando realices una recarga o cobres un servicio, aparecera aqui con
+          su comprobante.
+        </p>
+        <a href="{% url 'topups:catalog' %}" class="btn btn-primary mt-5">Hacer una recarga</a>
+      </div>
+    </div>
+
+  {% else %}
+    <div class="surface overflow-hidden">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Servicio</th>
+              <th class="num">Total</th>
+              <th>Estado</th>
+              <th>Fecha</th>
+              <th><span class="sr-only">Acciones</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for order in orders %}
+              <tr>
+                <td class="font-medium">{{ order.folio }}</td>
+                <td>
+                  {{ order.description }}
+                  {% if order.provider_mode == "SANDBOX" %}
+                    <span class="badge badge-info ml-1">Prueba</span>
+                  {% endif %}
+                </td>
+                <td class="num font-medium">{{ order.total_display }}</td>
+                <td>
+                  {% if order.state == "SUCCESS" %}
+                    <span class="badge badge-success"><span class="badge-dot"></span>Completada</span>
+                  {% elif order.state == "PAID" or order.state == "PROCESSING" %}
+                    <span class="badge badge-info"><span class="badge-dot"></span>En proceso</span>
+                  {% elif order.state == "FAILED" or order.state == "REFUND_PENDING" %}
+                    <span class="badge badge-danger"><span class="badge-dot"></span>Fallida</span>
+                  {% elif order.state == "UNDER_REVIEW" %}
+                    <span class="badge badge-warning"><span class="badge-dot"></span>En revision</span>
+                  {% elif order.state == "REFUNDED" %}
+                    <span class="badge badge-neutral">Reembolsada</span>
+                  {% else %}
+                    <span class="badge badge-neutral">{{ order.state }}</span>
+                  {% endif %}
+                </td>
+                <td class="whitespace-nowrap text-[var(--color-ink-500)]">
+                  {{ order.created_at|date:"d/m/y H:i" }}
+                </td>
+                <td class="text-right">
+                  <a href="{% url 'operations:receipt' order.id %}"
+                     class="text-sm font-medium" style="color: var(--color-accent-600);">Ver</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

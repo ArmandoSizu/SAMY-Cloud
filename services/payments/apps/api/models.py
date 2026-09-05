@@ -6,7 +6,14 @@ servicio: compartirla entre microservicios seria acoplamiento de datos.
 
 from __future__ import annotations
 
-from samy_common.idempotency.models import AbstractIdempotencyRecord
+from samy_common.idempotency.models import (
+    AbstractIdempotencyRecord,
+    IdempotencyStatus,
+)
+
+# Se reexporta para que el resto del servicio importe ambos desde aqui y no
+# tenga que conocer la ruta interna del paquete compartido.
+__all__ = ["IdempotencyRecord", "IdempotencyStatus"]
 
 
 class IdempotencyRecord(AbstractIdempotencyRecord):

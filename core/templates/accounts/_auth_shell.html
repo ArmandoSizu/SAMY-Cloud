@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% load static %}
+{# Envoltura comun de las pantallas de recuperacion de contrasena. #}
+{% block layout %}
+<main class="flex min-h-screen flex-col justify-center bg-white px-5 py-10 sm:px-10">
+  <div class="mx-auto w-full max-w-sm">
+    <a href="{% url 'accounts:login' %}" class="mb-10 inline-block">
+      <img src="{% static 'brand/samy-logo.svg' %}" alt="{{ BRAND_FULL }}" class="h-9 w-auto">
+    </a>
+    {% block auth_content %}{% endblock %}
+  </div>
+</main>
+{% endblock %}

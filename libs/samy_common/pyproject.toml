@@ -7,7 +7,11 @@ name = "samy-common"
 version = "0.1.0"
 description = "Nucleo compartido de SAMY Cloud: dinero, estados, firma S2S, idempotencia y observabilidad."
 requires-python = ">=3.12"
-license = "Proprietary"
+# PEP 639: setuptools 84 elimino la forma de tabla ({text = "..."}) y solo
+# acepta una expresion SPDX. "Proprietary" no es un identificador SPDX; el
+# prefijo LicenseRef- es la via estandar para declarar una licencia que no
+# esta en la lista oficial.
+license = "LicenseRef-Proprietary"
 authors = [{ name = "SAMY Cloud" }]
 
 # Dependencias minimas y con limite superior de major: una actualizacion mayor

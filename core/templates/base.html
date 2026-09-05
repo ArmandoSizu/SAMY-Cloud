@@ -16,10 +16,10 @@
 
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
 
-  {# HTMX y Alpine se sirven desde nuestro propio origen, no desde un CDN.
+  {% comment %} HTMX y Alpine se sirven desde nuestro propio origen, no desde un CDN.
      Motivo: la CSP de produccion no permite 'unsafe-inline' ni origenes
      externos para scripts, y depender de un CDN de terceros en un sistema
-     que cobra dinero anade un punto de fallo y de riesgo de suministro. #}
+     que cobra dinero anade un punto de fallo y de riesgo de suministro. {% endcomment %}
   <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
   <script src="{% static 'vendor/alpine.min.js' %}" defer></script>
 
@@ -34,8 +34,8 @@
 
   {% block layout %}{% endblock %}
 
-  {# Region de anuncios para lectores de pantalla: los cambios de estado que
-     ocurren via HTMX no generan navegacion, asi que hay que anunciarlos. #}
+  {% comment %} Region de anuncios para lectores de pantalla: los cambios de estado que
+     ocurren via HTMX no generan navegacion, asi que hay que anunciarlos. {% endcomment %}
   <div id="sr-announcer" class="sr-only" role="status" aria-live="polite"></div>
 
   <div class="toast-stack no-print" id="toasts" aria-live="polite">

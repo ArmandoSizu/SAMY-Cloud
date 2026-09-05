@@ -1,0 +1,112 @@
+{% extends "_app.html" %}
+
+{% block title %}Integraciones &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Estado de integraciones.
+
+  Es la pantalla que hace visible la honestidad del sistema: cada adaptador
+  con su estado REAL y, cuando no puede operar, la lista exacta de lo que
+  falta para habilitarlo.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Integraciones</h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">
+      {{ ready_providers }} de {{ total_providers }}
+      {{ total_providers|pluralize:"proveedor puede,proveedores pueden" }} operar.
+    </p>
+  </header>
+
+  {% for service_name, service in services.items %}
+    <section class="mb-6">
+      <h2 class="mb-2 text-sm font-semibold uppercase tracking-wider"
+          style="color: var(--color-ink-500);">{{ service_name }}</h2>
+
+      {% if not service.reachable %}
+        <div class="surface surface-pad flex items-start gap-3">
+          <span style="color: var(--color-danger-600);">{% include "_icons.html" with name="alert" %}</span>
+          <div>
+            <p class="font-medium">Servicio inaccesible</p>
+            <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">{{ service.error }}</p>
+          </div>
+        </div>
+
+      {% else %}
+        <div class="space-y-3">
+          {% for provider in service.providers %}
+            <div class="surface surface-pad">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-semibold">{{ provider.display_name }}</span>
+                    {% if provider.status == "READY" %}
+                      <span class="badge badge-success"><span class="badge-dot"></span>Operativo</span>
+                    {% elif provider.status == "NOT_CONFIGURED" %}
+                      <span class="badge badge-warning">Sin credenciales</span>
+                    {% elif provider.status == "PENDING_CONTRACT" %}
+                      <span class="badge badge-warning">Requiere contrato</span>
+                    {% elif provider.status == "DEGRADED" %}
+                      <span class="badge badge-danger">Degradado</span>
+                    {% elif provider.status == "DISABLED" %}
+                      <span class="badge badge-neutral">Deshabilitado</span>
+                    {% else %}
+                      <span class="badge badge-danger">{{ provider.status }}</span>
+                    {% endif %}
+                    {% if provider.requires_commercial_contract %}
+                      <span class="badge badge-neutral">Contrato comercial</span>
+                    {% endif %}
+                  </div>
+                  <p class="mt-1.5 text-sm text-[var(--color-ink-500)]">{{ provider.detail }}</p>
+
+                  {% if provider.capabilities %}
+                    <div class="mt-2 flex flex-wrap gap-1">
+                      {% for cap in provider.capabilities %}
+                        <span class="badge badge-neutral">{{ cap }}</span>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+
+                {% if provider.documentation_url %}
+                  <a href="{{ provider.documentation_url }}" target="_blank" rel="noopener noreferrer"
+                     class="btn btn-secondary btn-sm shrink-0">Documentacion</a>
+                {% endif %}
+              </div>
+
+              {% if provider.missing_requirements %}
+                <div class="mt-4 rounded-lg px-4 py-3" style="background: var(--color-ink-50);">
+                  <p class="mb-2 text-xs font-semibold uppercase tracking-wider"
+                     style="color: var(--color-ink-500);">Falta para habilitarlo</p>
+                  <ul class="space-y-1.5">
+                    {% for item in provider.missing_requirements %}
+                      <li class="flex items-start gap-2 text-sm">
+                        <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full"
+                              style="background: var(--color-ink-400);" aria-hidden="true"></span>
+                        <span>{{ item }}</span>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+            </div>
+          {% empty %}
+            <p class="text-sm text-[var(--color-ink-400)]">Sin adaptadores registrados.</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+  {% endfor %}
+
+  <div class="surface surface-pad">
+    <p class="text-sm text-[var(--color-ink-600)]">
+      El detalle de que contratar, con quien y con que requisitos esta en
+      <code class="rounded px-1.5 py-0.5 text-xs"
+            style="background: var(--color-ink-100);">docs/api-integrations.md</code>.
+    </p>
+  </div>
+</div>
+{% endblock %}

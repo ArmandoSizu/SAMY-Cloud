@@ -4,7 +4,7 @@
 {% block title %}Iniciar sesion &middot; {{ BRAND_FULL }}{% endblock %}
 
 {% block layout %}
-{#
+{% comment %}
   Pantalla de acceso.
 
   Dos paneles en escritorio: el formulario a la izquierda (donde cae la vista
@@ -13,7 +13,7 @@
 
   El panel de marca es tipografia y espacio, no una ilustracion decorativa:
   comunica que hace el producto sin ruido visual.
-#}
+{% endcomment %}
 <main class="min-h-full lg:grid lg:grid-cols-[1fr_1.1fr]">
 
   <!-- Formulario -->
@@ -49,8 +49,8 @@
 
         <div>
           <label for="{{ form.username.id_for_label }}" class="field-label">Correo electronico</label>
-          {# inputmode y autocomplete correctos: en celular abren el teclado de
-             correo y permiten autocompletar con el gestor de contrasenas. #}
+          {% comment %} inputmode y autocomplete correctos: en celular abren el teclado de
+             correo y permiten autocompletar con el gestor de contrasenas. {% endcomment %}
           <input type="email"
                  name="{{ form.username.html_name }}"
                  id="{{ form.username.id_for_label }}"

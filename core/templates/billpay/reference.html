@@ -1,0 +1,111 @@
+{% extends "_app.html" %}
+
+{% block title %}{{ biller.name }} &middot; Pago de servicios{% endblock %}
+
+{% comment %}
+  Captura de la referencia, con lector de codigos.
+
+  La camara se abre SOLO cuando el cajero pulsa "Escanear codigo": los
+  navegadores lo exigen, y pedir permiso al cargar la pagina es la forma mas
+  rapida de que alguien lo deniegue para siempre.
+
+  La captura manual siempre esta disponible: un recibo arrugado o mal impreso
+  no se lee, y el cajero no puede quedarse bloqueado.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-lg" x-data="samyScanner({ formats: {{ biller.barcode_formats|default:'null' }} })">
+
+  <a href="{% url 'billpay:catalog' %}"
+     class="mb-5 inline-flex items-center gap-1.5 text-sm font-medium"
+     style="color: var(--color-ink-500);">
+    {% include "_icons.html" with name="arrow-left" %}
+    Cambiar servicio
+  </a>
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight">{{ biller.name }}</h1>
+    <p class="mt-1 text-sm text-[var(--color-ink-500)]">
+      Paso 1 de 2 &middot; {{ biller.reference_label|default:"Referencia" }}
+    </p>
+  </header>
+
+  <!-- ============ Escaner ============ -->
+  <template x-if="active">
+    <div class="surface mb-4 overflow-hidden">
+      <div class="relative bg-black" style="aspect-ratio: 4/3;">
+        <video x-ref="video" class="h-full w-full object-cover" playsinline muted></video>
+
+        <!-- Guia de encuadre -->
+        <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div class="rounded-lg border-2 border-white/80"
+               style="width: 78%; height: 34%; box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.45);"></div>
+        </div>
+
+        <p class="absolute inset-x-0 bottom-3 text-center text-sm text-white/90"
+           x-text="status === 'confirming' ? 'Detectando, mantenlo firme...' : 'Encuadra el codigo de barras'"></p>
+      </div>
+
+      <div class="p-4">
+        <button type="button" @click="stopScan()" class="btn btn-secondary btn-block">
+          Cancelar escaneo
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <!-- ============ Formulario ============ -->
+  <div x-show="!active">
+    <template x-if="canScan">
+      <button type="button" @click="startScan()" class="btn btn-primary btn-block btn-lg mb-3">
+        {% include "_icons.html" with name="camera" %}
+        Escanear codigo del recibo
+      </button>
+    </template>
+
+    <template x-if="!canScan">
+      <div class="mb-3 flex items-start gap-2.5 rounded-lg px-4 py-3"
+           style="background: var(--color-warning-100); color: var(--color-warning-600);">
+        <span class="mt-0.5">{% include "_icons.html" with name="alert" %}</span>
+        <p class="text-sm">
+          Este dispositivo o navegador no permite usar la camara.
+          Captura la referencia manualmente.
+        </p>
+      </div>
+    </template>
+
+    <p x-show="errorMessage" x-cloak class="field-error mb-3" role="alert" x-text="errorMessage"></p>
+
+    <div class="mb-3 flex items-center gap-3">
+      <span class="h-px flex-1" style="background: var(--color-ink-200);"></span>
+      <span class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">o captura manual</span>
+      <span class="h-px flex-1" style="background: var(--color-ink-200);"></span>
+    </div>
+
+    <div id="paso-referencia">
+      {% include "billpay/_reference_form.html" %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}<style>[x-cloak]{display:none!important}</style>{% endblock %}
+
+{% block extra_scripts %}
+{% load static %}
+<script type="module" src="{% static 'js/scanner.js' %}"></script>
+<script>
+  // Al detectar un codigo, se rellena el campo y se envia al servidor.
+  // La validacion real la hace el servidor y, cuando el agregador lo permite,
+  // la consulta del adeudo: un validador en el navegador es una ayuda de
+  // usabilidad, nunca una garantia.
+  document.addEventListener('code-detected', (event) => {
+    const field = document.getElementById('reference');
+    const source = document.getElementById('reference-source');
+    if (!field) return;
+    field.value = event.detail.value;
+    if (source) source.value = event.detail.format === 'manual' ? 'manual' : 'scan';
+    field.form.requestSubmit();
+  });
+</script>
+{% endblock %}

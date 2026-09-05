@@ -259,3 +259,52 @@ def _get_order(order_id: str, store_id: str | None = None) -> Order:
     if store_id:
         queryset = queryset.filter(store_id=store_id)
     return get_object_or_404(queryset, pk=order_id)
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter("store_id", str, required=True),
+        OpenApiParameter("scope", str, description="'store' o 'own'"),
+        OpenApiParameter("user_id", str, description="Requerido si scope=own"),
+        OpenApiParameter("state", str, description="Filtra por estado"),
+    ],
+    responses={200: OrderDetailSerializer(many=True)},
+    description="Historial de operaciones, siempre acotado a una tienda.",
+)
+@api_view(["GET"])
+def order_history(request: Request) -> Response:
+    store_id = request.query_params.get("store_id")
+    if not store_id:
+        return Response(
+            {"error": {"code": "missing_store_id", "message": "Falta store_id."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    queryset = Order.objects.for_store(store_id).select_related("commission_entry")
+
+    # El alcance lo decide quien llama (el Core, que ya resolvio el permiso).
+    # Aqui se aplica tal cual: este servicio no conoce roles.
+    if request.query_params.get("scope") == "own":
+        user_id = request.query_params.get("user_id")
+        if not user_id:
+            return Response(
+                {"error": {"code": "missing_user_id", "message": "scope=own requiere user_id."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        queryset = queryset.filter(created_by_id=user_id)
+
+    if state := request.query_params.get("state"):
+        queryset = queryset.filter(state=state)
+
+    try:
+        limit = min(int(request.query_params.get("limit", 50)), 200)
+    except ValueError:
+        limit = 50
+
+    orders = queryset.order_by("-created_at")[:limit]
+    return Response(
+        {
+            "results": OrderDetailSerializer(orders, many=True).data,
+            "count": len(orders),
+        }
+    )

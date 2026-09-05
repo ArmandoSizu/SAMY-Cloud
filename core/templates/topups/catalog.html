@@ -1,0 +1,104 @@
+{% extends "_app.html" %}
+
+{% block title %}Recargas &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Catalogo de compañias.
+
+  Lo que se muestra viene del proveedor. Si no hay proveedor configurado, se
+  muestra un estado vacio que explica exactamente que falta y a quien pedirlo.
+  NO se pintan logos de Telcel o AT&T como si se pudiera vender: eso seria un
+  boton muerto, que es justo lo que este producto no tiene.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Recargas</h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">Elige la compañia del cliente.</p>
+  </header>
+
+  {% if is_stale %}
+    <div class="mb-5 flex items-start gap-2.5 rounded-lg px-4 py-3"
+         style="background: var(--color-warning-100); color: var(--color-warning-600);" role="alert">
+      <span class="mt-0.5">{% include "_icons.html" with name="alert" %}</span>
+      <p class="text-sm">
+        El catalogo lleva mas de 24 horas sin actualizarse. Es posible que
+        algun paquete ya no exista.
+      </p>
+    </div>
+  {% endif %}
+
+  {% if provider_mode == "SANDBOX" %}
+    <div class="mb-5 flex items-center gap-2.5 rounded-lg px-4 py-2.5"
+         style="background: var(--color-info-100); color: var(--color-info-600);">
+      <span class="badge badge-info">Sandbox</span>
+      <p class="text-sm">
+        Estas operando contra el ambiente de PRUEBAS del proveedor.
+        Las recargas no llegan a un telefono real.
+      </p>
+    </div>
+  {% endif %}
+
+  {% if available and operators %}
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {% for operator in operators %}
+        <a href="{% url 'topups:phone' operator.id %}"
+           class="action-tile items-center justify-center text-center"
+           style="min-height: 7rem;">
+          {% if operator.logo_url %}
+            <img src="{{ operator.logo_url }}" alt="" class="mx-auto mb-2 h-9 w-auto object-contain" aria-hidden="true">
+          {% else %}
+            <div class="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-xl text-base font-bold"
+                 style="background: var(--color-ink-100); color: var(--color-ink-600);" aria-hidden="true">
+              {{ operator.name|slice:":2"|upper }}
+            </div>
+          {% endif %}
+          <span class="block text-sm font-semibold">{{ operator.name }}</span>
+          <span class="mt-0.5 block text-xs text-[var(--color-ink-400)]">
+            {{ operator.products|length }} {{ operator.products|length|pluralize:"opcion,opciones" }}
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+
+  {% else %}
+    {# Estado vacio honesto: explica la causa y que hacer. #}
+    <div class="surface">
+      <div class="empty-state">
+        <div class="empty-state-icon">{% include "_icons.html" with name="plug" %}</div>
+        <p class="empty-state-title">Las recargas todavia no estan habilitadas</p>
+        <p class="empty-state-text">{{ reason }}</p>
+
+        {% if missing_requirements %}
+          <div class="mt-5 w-full max-w-md rounded-lg px-4 py-3 text-left"
+               style="background: var(--color-ink-50);">
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wider"
+               style="color: var(--color-ink-500);">Falta configurar</p>
+            <ul class="space-y-1.5">
+              {% for item in missing_requirements %}
+                <li class="flex items-start gap-2 text-sm">
+                  <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full"
+                        style="background: var(--color-ink-400);" aria-hidden="true"></span>
+                  <span>{{ item }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        {% if user.is_platform_admin %}
+          <a href="{% url 'platform_admin:providers' %}" class="btn btn-secondary mt-5">
+            Ver estado de integraciones
+          </a>
+        {% else %}
+          <p class="mt-5 text-sm text-[var(--color-ink-400)]">
+            Avisa al administrador de la plataforma.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

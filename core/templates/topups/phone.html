@@ -1,0 +1,37 @@
+{% extends "_app.html" %}
+
+{% block title %}{{ operator.name }} &middot; Recargas{% endblock %}
+
+{% comment %}
+  Captura del numero.
+
+  Doble captura a proposito: es la practica estandar en punto de venta y
+  atrapa el error mas caro del flujo, que es recargar el telefono equivocado.
+  Ese dinero no se recupera.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-lg">
+
+  <a href="{% url 'topups:catalog' %}"
+     class="mb-5 inline-flex items-center gap-1.5 text-sm font-medium"
+     style="color: var(--color-ink-500);">
+    {% include "_icons.html" with name="arrow-left" %}
+    Cambiar compañia
+  </a>
+
+  <header class="mb-6 flex items-center gap-3">
+    {% if operator.logo_url %}
+      <img src="{{ operator.logo_url }}" alt="" class="h-10 w-auto object-contain" aria-hidden="true">
+    {% endif %}
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ operator.name }}</h1>
+      <p class="text-sm text-[var(--color-ink-500)]">Paso 1 de 3 &middot; Numero telefonico</p>
+    </div>
+  </header>
+
+  <div id="paso-numero">
+    {% include "topups/_phone_form.html" %}
+  </div>
+</div>
+{% endblock %}

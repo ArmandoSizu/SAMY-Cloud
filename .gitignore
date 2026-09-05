@@ -89,8 +89,20 @@ core/static/css/app.css.map
 Thumbs.db
 desktop.ini
 
+# --- Celery -------------------------------------------------------------------
+# Estado del planificador (beat). Es un archivo de ejecucion que cada worker
+# reescribe; versionarlo provocaria conflictos constantes y no aporta nada.
+celerybeat-schedule
+celerybeat-schedule.*
+celerybeat.pid
+
 # --- Docker -------------------------------------------------------------------
 docker-compose.override.yml
+
+# --- Carpetas de herramientas externas ----------------------------------------
+# La aplicacion de escritorio de Claude deja aqui copias de trabajo. No forman
+# parte del proyecto.
+Claude outputs/
 
 # --- Sistema ------------------------------------------------------------------
 *.bak

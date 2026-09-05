@@ -1,0 +1,55 @@
+{% comment %} Formulario de captura del numero. Se reemplaza a si mismo por HTMX cuando
+   la validacion del servidor falla, conservando lo que el cajero escribio. {% endcomment %}
+<form class="surface surface-pad space-y-5"
+      hx-post="{% url 'topups:validate_phone' operator.id %}"
+      hx-target="#paso-numero"
+      hx-swap="outerHTML"
+      hx-indicator="#validando">
+  {% csrf_token %}
+
+  <div>
+    <label for="phone" class="field-label">Numero a 10 digitos</label>
+    {% comment %} inputmode=numeric abre el teclado numerico en celular sin permitir
+       texto; autocomplete=off evita que el navegador sugiera el numero del
+       cliente anterior. {% endcomment %}
+    <input type="tel"
+           id="phone"
+           name="phone"
+           class="input {% if error %}input-error{% endif %}"
+           inputmode="numeric"
+           autocomplete="off"
+           maxlength="20"
+           placeholder="55 1234 5678"
+           value="{{ phone_value|default:'' }}"
+           required
+           autofocus
+           {% if error %}aria-invalid="true" aria-describedby="err-phone"{% endif %}>
+    <p class="field-hint">Sin 044, sin 01 y sin el +52.</p>
+  </div>
+
+  <div>
+    <label for="phone_confirm" class="field-label">Confirma el numero</label>
+    <input type="tel"
+           id="phone_confirm"
+           name="phone_confirm"
+           class="input"
+           inputmode="numeric"
+           autocomplete="off"
+           maxlength="20"
+           placeholder="Escribelo de nuevo"
+           required>
+    <p class="field-hint">Escribirlo dos veces evita recargar a otra persona.</p>
+  </div>
+
+  {% if error %}
+    <p class="field-error" id="err-phone" role="alert">
+      {% include "_icons.html" with name="alert" %}
+      {{ error }}
+    </p>
+  {% endif %}
+
+  <button type="submit" class="btn btn-primary btn-block btn-lg">
+    <span id="validando" class="htmx-indicator">{% include "_icons.html" with name="spinner" %}</span>
+    Continuar
+  </button>
+</form>

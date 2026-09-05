@@ -4,8 +4,8 @@
   "private": true,
   "description": "Compilacion de CSS de SAMY Cloud (Tailwind v4).",
   "scripts": {
-    "build:css": "tailwindcss -i ./static/src/app.css -o ./static/css/app.css --minify",
-    "watch:css": "tailwindcss -i ./static/src/app.css -o ./static/css/app.css --watch"
+    "build:css": "tailwindcss -i ./assets/app.css -o ./static/css/app.css --minify",
+    "watch:css": "tailwindcss -i ./assets/app.css -o ./static/css/app.css --watch"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.0",

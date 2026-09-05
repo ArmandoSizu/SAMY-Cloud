@@ -1,0 +1,41 @@
+<form hx-post="{% url 'billpay:inquire' biller.id %}"
+      hx-target="#paso-referencia"
+      hx-swap="outerHTML"
+      hx-indicator="#consultando"
+      class="surface surface-pad space-y-4">
+  {% csrf_token %}
+  <input type="hidden" name="source" id="reference-source" value="manual">
+
+  <div>
+    <label for="reference" class="field-label">
+      {{ biller.reference_label|default:"Referencia" }}
+    </label>
+    <input type="text"
+           id="reference"
+           name="reference"
+           class="input tabular {% if error %}input-error{% endif %}"
+           {% if biller.reference_numeric_only %}inputmode="numeric"{% endif %}
+           autocomplete="off"
+           autocapitalize="characters"
+           spellcheck="false"
+           maxlength="{{ biller.reference_max_length|default:40 }}"
+           value="{{ reference_value|default:'' }}"
+           required
+           {% if error %}aria-invalid="true" aria-describedby="err-ref"{% endif %}>
+    {% if biller.reference_help_text %}
+      <p class="field-hint">{{ biller.reference_help_text }}</p>
+    {% endif %}
+  </div>
+
+  {% if error %}
+    <p class="field-error" id="err-ref" role="alert">
+      {% include "_icons.html" with name="alert" %}
+      {{ error }}
+    </p>
+  {% endif %}
+
+  <button type="submit" class="btn btn-primary btn-block btn-lg">
+    <span id="consultando" class="htmx-indicator">{% include "_icons.html" with name="spinner" %}</span>
+    {% if biller.supports_inquiry %}Consultar adeudo{% else %}Continuar{% endif %}
+  </button>
+</form>

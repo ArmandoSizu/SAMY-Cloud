@@ -1,0 +1,54 @@
+{% extends "_app.html" %}
+
+{% block title %}Integracion pendiente &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Pantalla que aparece cuando un proveedor no tiene credenciales.
+
+  Es una pantalla de exito del diseño, no un error: significa que el sistema
+  se NEGO a inventar una transaccion. Se dice con claridad que no se cobro
+  nada, porque es la duda inmediata del cajero.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-lg">
+  <div class="surface surface-pad text-center">
+    <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
+         style="background: var(--color-warning-100); color: var(--color-warning-600);">
+      {% include "_icons.html" with name="plug" %}
+    </div>
+
+    <h1 class="text-xl font-semibold">Esta integracion aun no esta activa</h1>
+    <p class="mt-2 text-[var(--color-ink-500)]">{{ message }}</p>
+
+    <div class="mt-5 rounded-lg px-4 py-3" style="background: var(--color-success-100);">
+      <p class="text-sm font-medium" style="color: var(--color-success-600);">
+        No se realizo ningun cargo. La operacion no avanzo.
+      </p>
+    </div>
+
+    {% if missing_requirements %}
+      <div class="mt-5 rounded-lg px-4 py-3 text-left" style="background: var(--color-ink-50);">
+        <p class="mb-2 text-xs font-semibold uppercase tracking-wider"
+           style="color: var(--color-ink-500);">Falta para habilitarla</p>
+        <ul class="space-y-1.5">
+          {% for item in missing_requirements %}
+            <li class="flex items-start gap-2 text-sm">
+              <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full"
+                    style="background: var(--color-ink-400);" aria-hidden="true"></span>
+              <span>{{ item }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <div class="mt-6 flex gap-2">
+      <a href="{% url 'dashboard:home' %}" class="btn btn-secondary flex-1">Volver al inicio</a>
+      {% if user.is_platform_admin %}
+        <a href="{% url 'platform_admin:providers' %}" class="btn btn-primary flex-1">Ver integraciones</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

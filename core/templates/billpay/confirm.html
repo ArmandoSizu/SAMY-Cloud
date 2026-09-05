@@ -1,0 +1,54 @@
+{% extends "_app.html" %}
+{% block title %}Confirmar pago &middot; {{ BRAND_FULL }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-lg">
+  <header class="mb-6">
+    <p class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-ink-500);">Paso 2 de 2</p>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight">Confirma el pago</h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">Verifica los datos con el cliente antes de cobrar.</p>
+  </header>
+
+  <div class="surface surface-pad">
+    <div class="border-b pb-5 text-center" style="border-color: var(--color-ink-200);">
+      <p class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">{{ biller.name }}</p>
+      <p class="mt-1 text-2xl font-semibold tabular tracking-tight">{{ inquiry.reference }}</p>
+      {% if inquiry.customer_name %}
+        <p class="mt-1.5 text-sm text-[var(--color-ink-500)]">{{ inquiry.customer_name }}</p>
+      {% endif %}
+    </div>
+
+    <dl class="space-y-2.5 py-5">
+      {% if inquiry.period %}
+        <div class="flex justify-between">
+          <dt class="text-[var(--color-ink-600)]">Periodo</dt><dd>{{ inquiry.period }}</dd>
+        </div>
+      {% endif %}
+      {% if inquiry.due_date %}
+        <div class="flex justify-between">
+          <dt class="text-[var(--color-ink-600)]">Vencimiento</dt>
+          <dd {% if inquiry.is_overdue %}style="color: var(--color-danger-600);"{% endif %}>
+            {{ inquiry.due_date }}{% if inquiry.is_overdue %} (vencido){% endif %}
+          </dd>
+        </div>
+      {% endif %}
+    </dl>
+
+    <div class="flex items-baseline justify-between border-t pt-4" style="border-color: var(--color-ink-200);">
+      <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-ink-500);">Total a pagar</span>
+      <span class="text-3xl font-semibold tabular tracking-tight">{{ inquiry.amount_due_display }}</span>
+    </div>
+  </div>
+
+  <div class="mt-4 flex items-start gap-2.5 rounded-lg px-4 py-3"
+       style="background: var(--color-info-100); color: var(--color-info-600);">
+    <span class="mt-0.5">{% include "_icons.html" with name="lock" %}</span>
+    <p class="text-sm">El recibo se paga <strong>solo despues</strong> de confirmar el cobro.</p>
+  </div>
+
+  <form method="post" action="{% url 'billpay:create_order' %}" class="mt-5">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary btn-block btn-lg">Continuar al cobro</button>
+  </form>
+  <a href="{% url 'billpay:catalog' %}" class="btn btn-ghost btn-block mt-2">Cancelar</a>
+</div>
+{% endblock %}

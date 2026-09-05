@@ -1,0 +1,74 @@
+{% extends "_app.html" %}
+{% block title %}Panel SAMY &middot; {{ BRAND_FULL }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Panel de plataforma</h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">Estado global de SAMY Cloud.</p>
+  </header>
+
+  <div class="mb-6 grid gap-3 sm:grid-cols-3">
+    <div class="surface surface-pad">
+      <p class="stat-label">Organizaciones</p>
+      <p class="stat-value">{{ organizations }}</p>
+    </div>
+    <div class="surface surface-pad">
+      <p class="stat-label">Tiendas activas</p>
+      <p class="stat-value">{{ stores }}</p>
+    </div>
+    <div class="surface surface-pad">
+      <p class="stat-label">Microservicios</p>
+      <p class="stat-value" style="color: {% if all_healthy %}var(--color-success-600){% else %}var(--color-danger-600){% endif %};">
+        {{ services|length }}
+      </p>
+      <p class="mt-1 text-xs text-[var(--color-ink-500)]">
+        {% if all_healthy %}Todos responden{% else %}Alguno no responde{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <section class="mb-6">
+    <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider"
+        style="color: var(--color-ink-500);">Salud de los servicios</h2>
+    <div class="surface overflow-hidden">
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Servicio</th><th>Estado</th><th>Detalle</th></tr></thead>
+          <tbody>
+            {% for name, info in services.items %}
+              <tr>
+                <td class="font-medium">{{ name }}</td>
+                <td>
+                  {% if info.reachable and info.status == "ok" %}
+                    <span class="badge badge-success"><span class="badge-dot"></span>Saludable</span>
+                  {% elif info.reachable %}
+                    <span class="badge badge-warning">{{ info.status }}</span>
+                  {% else %}
+                    <span class="badge badge-danger">Inaccesible</span>
+                  {% endif %}
+                </td>
+                <td class="text-[var(--color-ink-500)]">{{ info.error|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid gap-3 sm:grid-cols-3">
+    <a href="{% url 'platform_admin:providers' %}" class="action-tile">
+      <div><h3 class="font-semibold">Integraciones</h3>
+      <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">Estado de proveedores</p></div>
+    </a>
+    <a href="{% url 'platform_admin:stores' %}" class="action-tile">
+      <div><h3 class="font-semibold">Tiendas</h3>
+      <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">Negocios y empleados</p></div>
+    </a>
+    <a href="{% url 'platform_admin:audit' %}" class="action-tile">
+      <div><h3 class="font-semibold">Auditoria</h3>
+      <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">Bitacora del sistema</p></div>
+    </a>
+  </div>
+</div>
+{% endblock %}

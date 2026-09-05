@@ -352,6 +352,25 @@ def confirm_payment(
         total_cents=fresh.total_cents,
         source=source,
     )
+
+    # Una venta propia del comercio no tiene servicio externo que entregar:
+    # el cliente ya se llevo lo que compro. Dejarla en PAID esperando una
+    # confirmacion que nunca llegara la mostraria "en proceso" para siempre.
+    if fresh.service_kind == ServiceKind.MERCHANT_SALE:
+        fresh = fresh.transition(
+            OrderState.PROCESSING, reason="Venta del comercio: sin entrega externa."
+        )
+        fresh = fresh.transition(
+            OrderState.SUCCESS, reason="Venta completada."
+        )
+        OutboxEvent.objects.create(
+            event_type="order.succeeded",
+            aggregate_type="Order",
+            aggregate_id=fresh.id,
+            correlation_id=fresh.correlation_id,
+            payload={"order_id": str(fresh.id), "folio": fresh.folio},
+        )
+
     return fresh
 
 
