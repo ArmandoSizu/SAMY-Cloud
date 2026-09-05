@@ -77,11 +77,19 @@ class TopupRequest:
     operator_code: str
     product_id: str
     amount: Money
-    #: Numero en formato internacional, listo para el proveedor.
+    #: Numero en formato internacional (+52...), para los proveedores que lo
+    #: piden asi.
     phone_e164: str
+    #: Numero nacional de 10 digitos, sin codigo de pais. Reloadly lo espera
+    #: en esta forma junto con ``countryCode`` por separado.
+    phone_national: str
     #: Numero enmascarado, unico apto para logs y comprobantes.
     phone_masked: str
-    #: Clave que el proveedor debe usar para no recargar dos veces.
+    #: NUESTRA referencia para conciliar esta recarga con el proveedor.
+    #:
+    #: Se llama "idempotency_key" por historia, pero cuidado: que el proveedor
+    #: la respete como clave de idempotencia depende del proveedor y hay que
+    #: comprobarlo en su documentacion. Reloadly NO lo garantiza.
     idempotency_key: str
 
 
@@ -110,10 +118,29 @@ class TopupProvider(BaseProvider[Any], abc.ABC):
 
     @abc.abstractmethod
     def send_topup(self, request: TopupRequest) -> TopupResult:
-        """Envia la recarga. Debe ser idempotente por ``idempotency_key``."""
+        """Envia la recarga.
+
+        **No se asume que el proveedor deduplique.** Si el envio termina en
+        timeout, el adaptador debe levantar ``ProviderIndeterminateError`` y
+        NUNCA reintentar por su cuenta: quien reintenta a ciegas una recarga
+        que quiza ya se aplico, la aplica dos veces y paga las dos.
+        """
         raise NotImplementedError
 
     @abc.abstractmethod
     def get_topup_status(self, provider_reference: str) -> TopupResult:
         """Consulta el estado real. Es el mecanismo de conciliacion."""
         raise NotImplementedError
+
+    def find_by_custom_identifier(self, custom_identifier: str) -> TopupResult | None:
+        """Busca una recarga por NUESTRA referencia, sin conocer la del proveedor.
+
+        Es lo que permite resolver un envio indeterminado: tras un timeout no
+        tenemos ``provider_reference``, solo nuestra propia clave, y hay que
+        averiguar si la recarga existe antes de reintentar o reembolsar.
+
+        Por omision devuelve ``None`` ("no lo se"), que es la respuesta segura:
+        un adaptador que no sepa buscar deja la recarga en revision manual en
+        vez de arriesgar un duplicado.
+        """
+        return None

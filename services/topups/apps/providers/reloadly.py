@@ -26,6 +26,24 @@ sera escribir un adaptador, no reescribir el microservicio.
 
 ESTADO: sin credenciales. ``check_health()`` devuelve NOT_CONFIGURED y toda
 operacion se detiene antes de tocar la orden.
+
+DOS COSAS QUE HAY QUE TENER PRESENTES AL LEER ESTE ARCHIVO
+----------------------------------------------------------
+
+**1. Dos monedas.** Reloadly maneja la moneda de NUESTRO monedero (que en una
+cuenta de sandbox es USD) y la moneda del destinatario (MXN para Mexico), y
+devuelve las denominaciones por duplicado: ``fixedAmounts`` viene en la
+primera y ``localFixedAmounts`` en la segunda. Aqui se usan SIEMPRE las
+locales, y las recargas se envian con ``useLocalAmount=true``. Vender una
+recarga de "100" tomada de la lista equivocada significaria cobrar 100 pesos
+por lo que en realidad son 100 dolares de saldo.
+
+**2. ``customIdentifier`` NO es una clave de idempotencia.** Reloadly la
+documenta como "tu referencia interna" y en ninguna parte promete que dos
+peticiones con el mismo valor produzcan una sola recarga. Por eso este
+adaptador **nunca reintenta un POST /topups**: ante un timeout levanta
+``ProviderIndeterminateError`` y la conciliacion busca la transaccion por esa
+referencia con ``find_by_custom_identifier()`` antes de decidir nada.
 """
 
 from __future__ import annotations
@@ -67,6 +85,29 @@ PRODUCTION_BASE: Final[str] = "https://topups.reloadly.com"
 #: Codigo ISO del pais que atendemos.
 COUNTRY_MX: Final[str] = "MX"
 
+#: Moneda en la que vendemos. Es la del destinatario, no la del monedero.
+CURRENCY_MX: Final[str] = "MXN"
+
+#: Cabecera que fija la version de la API. Sin ella Reloadly puede servir otra
+#: version y cambiar el formato de respuesta sin aviso.
+ACCEPT_HEADER: Final[str] = "application/com.reloadly.topups-v1+json"
+
+#: Prefijo de la clave donde se guarda el token OAuth compartido.
+#:
+#: El registro construye un adaptador NUEVO en cada llamada, asi que un cache
+#: en la instancia se pierde siempre y acabariamos pidiendo un token por cada
+#: peticion. Reloadly castiga el exceso de llamadas suspendiendo la cuenta, y
+#: reactivarla exige hablar con soporte: el cache compartido no es una
+#: optimizacion, es proteccion.
+TOKEN_CACHE_PREFIX: Final[str] = "samy:reloadly:token:"
+
+#: Margen con el que se renueva el token antes de vencer. Pedirlo justo al
+#: expirar produce fallos intermitentes por desfase de reloj entre maquinas.
+TOKEN_REFRESH_MARGIN_SECONDS: Final[int] = 300
+
+#: Reloadly responde 404 con este codigo cuando no reconoce al operador.
+ERROR_NO_AUTODETECT: Final[str] = "COULD_NOT_AUTO_DETECT_OPERATOR"
+
 
 @dataclass(frozen=True, slots=True)
 class ReloadlyConfig:
@@ -91,11 +132,6 @@ class ReloadlyProvider(TopupProvider):
     required_settings = ("RELOADLY_CLIENT_ID", "RELOADLY_CLIENT_SECRET")
     requires_commercial_contract = False
     documentation_url = "https://docs.reloadly.com/airtime"
-
-    def __init__(self, config: ReloadlyConfig, mode: ProviderMode) -> None:
-        super().__init__(config, mode)
-        self._token: str | None = None
-        self._token_expires_at: float = 0.0
 
     @property
     def base_url(self) -> str:
@@ -218,24 +254,48 @@ class ReloadlyProvider(TopupProvider):
         return products
 
     def _parse_operator(self, operator: dict[str, Any]) -> list[CatalogProduct]:
-        """Traduce un operador de Reloadly a productos de nuestro catalogo."""
-        operator_id = str(operator.get("operatorId", ""))
+        """Traduce un operador de Reloadly a productos de nuestro catalogo.
+
+        **Se usan las denominaciones LOCALES.** Reloadly devuelve cada monto
+        dos veces: ``fixedAmounts`` en la moneda de nuestro monedero (USD en
+        una cuenta de sandbox) y ``localFixedAmounts`` en la del destinatario
+        (MXN). El cajero cobra pesos y el cliente recibe pesos, asi que la
+        unica lista correcta es la local. Tomar la otra significaria vender
+        "100" cobrando 100 pesos por 100 dolares de saldo.
+        """
+        operator_id = str(operator.get("operatorId") or operator.get("id") or "")
         name = str(operator.get("name", "")).strip()
-        currency = str(operator.get("destinationCurrencyCode") or "MXN")
+        currency = str(operator.get("destinationCurrencyCode") or CURRENCY_MX)
         logo_urls = operator.get("logoUrls") or []
-        supports_data = bool(operator.get("bundle"))
+        # ``data`` marca paquetes de datos; ``bundle`` marca combos. Cualquiera
+        # de los dos deja de ser "tiempo aire" a secas.
+        is_data = bool(operator.get("data")) or bool(operator.get("bundle"))
 
         products: list[CatalogProduct] = []
 
-        # Denominaciones fijas: la lista exacta de montos que el operador vende.
-        for raw_amount in operator.get("fixedAmounts") or []:
+        amounts = operator.get("localFixedAmounts") or []
+        descriptions = operator.get("localFixedAmountsDescriptions") or {}
+
+        for raw_amount in amounts:
             try:
                 amount = Money.parse(str(raw_amount), currency)
-            except (ValueError, ArithmeticError):
+            except (ValueError, ArithmeticError, TypeError):
+                # Un monto que no se puede interpretar NO se vende. Preferimos
+                # un catalogo con un hueco a una denominacion mal calculada.
+                log.warning(
+                    "reloadly_amount_unparseable",
+                    operator=operator_id,
+                    raw_amount=raw_amount,
+                )
                 continue
 
-            descriptions = operator.get("fixedAmountsDescriptions") or {}
-            label = str(descriptions.get(str(raw_amount)) or f"Recarga {amount}")
+            # Reloadly indexa las descripciones por el monto formateado con
+            # dos decimales ("50.00"), no por el valor crudo.
+            label = str(
+                descriptions.get(f"{float(raw_amount):.2f}")
+                or descriptions.get(str(raw_amount))
+                or f"Recarga {amount}"
+            )
 
             products.append(
                 CatalogProduct(
@@ -243,36 +303,104 @@ class ReloadlyProvider(TopupProvider):
                     provider_product_id=f"{operator_id}:{raw_amount}",
                     operator_code=operator_id,
                     operator_name=name,
-                    label=label,
+                    label=label[:160],
                     amount=amount,
-                    is_data_package=supports_data,
+                    is_data_package=is_data,
                     logo_url=str(logo_urls[0]) if logo_urls else "",
-                    raw={"operator": operator_id, "amount": raw_amount},
+                    raw={
+                        "operator": operator_id,
+                        "local_amount": raw_amount,
+                        "currency": currency,
+                        "denomination_type": operator.get("denominationType"),
+                    },
                 )
             )
 
-        # Rango libre: algunos operadores aceptan cualquier monto entre un
-        # minimo y un maximo. Se expone como producto de monto abierto.
-        min_amount = operator.get("minAmount")
-        max_amount = operator.get("maxAmount")
-        if min_amount and max_amount and not products:
+        # Monto libre. La regla que publica Reloadly es mirar el minimo: si es
+        # nulo, el operador es de denominaciones fijas; si trae valor, acepta
+        # cualquier monto del rango.
+        min_amount = operator.get("localMinAmount")
+        max_amount = operator.get("localMaxAmount")
+        es_rango = (
+            str(operator.get("denominationType") or "").upper() == "RANGE"
+            or min_amount is not None
+        )
+
+        if es_rango and min_amount is not None and max_amount is not None:
+            try:
+                minimo = Money.parse(str(min_amount), currency)
+                maximo = Money.parse(str(max_amount), currency)
+            except (ValueError, ArithmeticError, TypeError):
+                return products
+
             products.append(
                 CatalogProduct(
                     provider_slug=self.slug,
                     provider_product_id=f"{operator_id}:range",
                     operator_code=operator_id,
                     operator_name=name,
-                    label=f"Monto libre ({min_amount} - {max_amount})",
+                    label=f"Monto libre ({minimo} a {maximo})",
                     amount=None,
-                    min_amount=Money.parse(str(min_amount), currency),
-                    max_amount=Money.parse(str(max_amount), currency),
-                    is_data_package=supports_data,
+                    min_amount=minimo,
+                    max_amount=maximo,
+                    is_data_package=is_data,
                     logo_url=str(logo_urls[0]) if logo_urls else "",
-                    raw={"operator": operator_id, "range": [min_amount, max_amount]},
+                    raw={
+                        "operator": operator_id,
+                        "local_range": [min_amount, max_amount],
+                        "currency": currency,
+                        "denomination_type": operator.get("denominationType"),
+                    },
                 )
             )
 
         return products
+
+    # -- deteccion de operador ---------------------------------------------
+
+    def detect_operator(self, phone_national: str) -> dict[str, Any] | None:
+        """Averigua a que compania pertenece un numero. ``None`` si no lo sabe.
+
+        Es una AYUDA, no una garantia. Con la portabilidad numerica vigente en
+        Mexico desde 2008, el prefijo no dice nada, asi que preguntarle al
+        proveedor es lo unico honesto que se puede hacer. Aun asi, la eleccion
+        final la confirma el cajero: si Reloadly se equivoca, la recarga se va
+        a la compania incorrecta y el dinero no vuelve.
+
+        Un numero recien portado es justamente el caso que Reloadly puede
+        fallar, y por eso devolver ``None`` es un resultado normal, no un
+        error que deba interrumpir la venta.
+        """
+        self.ensure_ready()
+
+        try:
+            with self._client() as client:
+                response = client.get(
+                    f"/operators/auto-detect/phone/{phone_national}/countries/{COUNTRY_MX}"
+                )
+        except httpx.HTTPError as exc:
+            # Que falle la deteccion no puede impedir vender: el cajero elige
+            # la compania a mano, como ha hecho siempre.
+            log.warning("reloadly_autodetect_unavailable", error=str(exc))
+            return None
+
+        if response.status_code == 404:
+            log.info("reloadly_operator_not_detected", phone_masked=phone_national[-4:])
+            return None
+        if response.status_code >= 400:
+            log.warning(
+                "reloadly_autodetect_failed", status=response.status_code
+            )
+            return None
+
+        data = response.json() if response.content else {}
+        if not isinstance(data, dict) or not data.get("operatorId"):
+            return None
+
+        return {
+            "provider_operator_id": str(data.get("operatorId")),
+            "name": str(data.get("name", "")),
+        }
 
     # -- recarga -----------------------------------------------------------
 
@@ -280,14 +408,24 @@ class ReloadlyProvider(TopupProvider):
         """Envia la recarga. Solo se llama con la orden ya en PAID."""
         self.ensure_ready()
 
+        # ``useLocalAmount=True`` es obligatorio y va de la mano del catalogo:
+        # los montos que vendemos salen de ``localFixedAmounts``, es decir en
+        # pesos. Enviarlos sin esta bandera los interpretaria como dolares.
+        #
+        # El numero viaja en formato nacional de 10 digitos junto al codigo de
+        # pais. Reloadly normaliza ambas formas, pero sus propios ejemplos se
+        # contradicen sobre si el numero debe llevar el 52; mandar el nacional
+        # con el pais aparte no es ambiguo en ninguna de las dos lecturas.
         payload = {
             "operatorId": int(request.operator_code),
             "amount": float(request.amount.amount),
             "useLocalAmount": True,
+            # Referencia NUESTRA para conciliar. Reloadly no promete que
+            # deduplique por este campo, asi que no se usa como salvaguarda.
             "customIdentifier": request.idempotency_key,
             "recipientPhone": {
                 "countryCode": COUNTRY_MX,
-                "number": request.phone_e164,
+                "number": request.phone_national,
             },
         }
 
@@ -344,43 +482,144 @@ class ReloadlyProvider(TopupProvider):
         )
 
     def get_topup_status(self, provider_reference: str) -> TopupResult:
-        """Consulta el estado real. Mecanismo de conciliacion."""
+        """Consulta el estado real. Mecanismo de conciliacion.
+
+        La respuesta viene envuelta: ``{code, message, status, transaction}``.
+        Mientras la recarga esta en curso, ``transaction`` es ``null`` y solo
+        hay ``status``; al terminar llega la transaccion completa. Por eso se
+        leen los datos del sobre y del contenido con cuidado, en vez de
+        suponer que la transaccion siempre viene.
+        """
         self.ensure_ready()
         try:
             with self._client() as client:
-                response = client.get(f"/topups/reports/transactions/{provider_reference}")
+                response = client.get(f"/topups/{provider_reference}/status")
         except httpx.HTTPError as exc:
             raise ProviderTransientError(
                 provider=self.slug, message=f"No se pudo consultar la recarga: {exc}"
             ) from exc
 
         if response.status_code == 404:
+            # Reloadly no conoce esa transaccion. Es un resultado NEGATIVO
+            # confirmado: la recarga no llego a existir.
             return TopupResult(
                 status=TopupStatus.FAILED,
                 provider_reference=provider_reference,
                 provider_mode=str(self.mode),
                 failure_reason="La recarga no existe en Reloadly.",
             )
+        if response.status_code >= 400:
+            raise ProviderTransientError(
+                provider=self.slug,
+                message=f"Reloadly respondio {response.status_code} al consultar la recarga.",
+                external_code=str(response.status_code),
+            )
 
-        data = response.json() if response.content else {}
+        sobre = response.json() if response.content else {}
+        if not isinstance(sobre, dict):
+            sobre = {}
+        transaccion = sobre.get("transaction") or {}
+        if not isinstance(transaccion, dict):
+            transaccion = {}
+
         return TopupResult(
-            status=self._map_status(str(data.get("status") or "").upper()),
-            provider_reference=str(data.get("transactionId", provider_reference)),
+            status=self._map_status(str(sobre.get("status") or "").upper()),
+            provider_reference=str(
+                transaccion.get("transactionId") or provider_reference
+            ),
             provider_mode=str(self.mode),
-            operator_reference=str(data.get("operatorTransactionId") or ""),
-            raw_response=data,
+            operator_reference=str(transaccion.get("operatorTransactionId") or ""),
+            failure_reason=str(sobre.get("message") or "")[:255],
+            raw_response=sobre,
         )
+
+    def find_by_custom_identifier(self, custom_identifier: str) -> TopupResult | None:
+        """Busca una recarga por NUESTRA referencia. Devuelve ``None`` si no existe.
+
+        Existe por una razon concreta: ``customIdentifier`` no es una clave de
+        idempotencia. Cuando ``send_topup`` termina en timeout no sabemos si
+        la recarga se aplico, y reintentar a ciegas puede recargar dos veces.
+        Este metodo es el que permite averiguarlo antes de decidir.
+
+        Reloadly no publica un endpoint de busqueda por esa referencia, asi
+        que se recorre el listado de transacciones recientes y se filtra aqui.
+        Es mas caro que una consulta directa; es lo que hay, y sigue siendo
+        mucho mas barato que una recarga duplicada.
+        """
+        self.ensure_ready()
+
+        try:
+            with self._client() as client:
+                response = client.get(
+                    "/reports/transactions", params={"page": 0, "size": 200}
+                )
+        except httpx.HTTPError as exc:
+            raise ProviderTransientError(
+                provider=self.slug,
+                message=f"No se pudo consultar el historial de Reloadly: {exc}",
+            ) from exc
+
+        if response.status_code >= 400:
+            raise ProviderTransientError(
+                provider=self.slug,
+                message=f"Reloadly respondio {response.status_code} al listar transacciones.",
+                external_code=str(response.status_code),
+            )
+
+        payload = response.json() if response.content else {}
+        transacciones = (
+            payload if isinstance(payload, list) else payload.get("content", []) or []
+        )
+
+        for transaccion in transacciones:
+            if not isinstance(transaccion, dict):
+                continue
+            if str(transaccion.get("customIdentifier") or "") != custom_identifier:
+                continue
+
+            log.info(
+                "reloadly_transaction_found_by_identifier",
+                custom_identifier=custom_identifier,
+                transaction_id=transaccion.get("transactionId"),
+            )
+            # Aparecer en el historial significa que Reloadly la acepto. El
+            # estado definitivo se pide aparte, porque el listado no siempre
+            # lo trae.
+            return self.get_topup_status(str(transaccion.get("transactionId")))
+
+        log.info("reloadly_transaction_not_found", custom_identifier=custom_identifier)
+        return None
 
     # -- internos -----------------------------------------------------------
 
-    def _ensure_token(self) -> str:
-        """Obtiene y cachea el token OAuth2.
+    @property
+    def _token_cache_key(self) -> str:
+        """Clave por modo y por credencial.
 
-        Se renueva 60 segundos antes de expirar: pedirlo justo al vencer
-        produce fallos intermitentes por desfase de reloj.
+        Incluye el modo para que un token de sandbox no se use jamas contra
+        produccion, y un fragmento del client_id para que rotar credenciales
+        invalide el cache solo. Nunca se guarda el secreto.
         """
-        if self._token and time.time() < self._token_expires_at - 60:
-            return self._token
+        return f"{TOKEN_CACHE_PREFIX}{self.mode}:{self.config.client_id[:12]}"
+
+    def _ensure_token(self) -> str:
+        """Obtiene el token OAuth2, compartido entre procesos via Redis.
+
+        El registro construye un adaptador nuevo en cada llamada, asi que un
+        cache en memoria de la instancia no sobrevive a la peticion y
+        acabariamos pidiendo un token cada vez. Reloadly responde al exceso de
+        llamadas suspendiendo la cuenta, y reactivarla exige escribir a
+        soporte: compartir el token no es una optimizacion, es evitar quedarse
+        sin proveedor a media jornada.
+
+        El token dura 24 h en sandbox y 60 dias en produccion; se guarda con
+        margen para no usar uno a punto de vencer.
+        """
+        from django.core.cache import cache
+
+        cached = cache.get(self._token_cache_key)
+        if cached:
+            return str(cached)
 
         audience = self.base_url
         try:
@@ -412,16 +651,23 @@ class ReloadlyProvider(TopupProvider):
             )
 
         data = response.json()
-        self._token = str(data["access_token"])
-        self._token_expires_at = time.time() + int(data.get("expires_in", 3600))
-        return self._token
+        token = str(data["access_token"])
+        expires_in = int(data.get("expires_in", 3600))
+
+        # Se guarda con margen: un token que vence mientras viaja la peticion
+        # produce un 401 que parece un problema de credenciales y no lo es.
+        ttl = max(60, expires_in - TOKEN_REFRESH_MARGIN_SECONDS)
+        cache.set(self._token_cache_key, token, timeout=ttl)
+
+        log.info("reloadly_token_obtained", mode=str(self.mode), ttl_seconds=ttl)
+        return token
 
     def _client(self) -> httpx.Client:
         return httpx.Client(
             base_url=self.base_url,
             headers={
                 "Authorization": f"Bearer {self._ensure_token()}",
-                "Accept": "application/com.reloadly.topups-v1+json",
+                "Accept": ACCEPT_HEADER,
                 "Content-Type": "application/json",
             },
             timeout=httpx.Timeout(
@@ -434,11 +680,23 @@ class ReloadlyProvider(TopupProvider):
 
     @staticmethod
     def _map_status(status: str) -> str:
+        """Traduce el estado de Reloadly al nuestro.
+
+        Reloadly documenta cuatro: PROCESSING, SUCCESSFUL, REFUNDED y FAILED.
+        Se aceptan ademas algunos sinonimos por si aparecen.
+
+        REFUNDED cuenta como fallo NUESTRO aunque para Reloadly sea un final
+        feliz: su reembolso automatico devuelve el dinero a nuestro monedero,
+        no al bolsillo del cliente, que pago en el mostrador y no recibio su
+        recarga. Ese caso dispara REFUND_PENDING en la orden.
+        """
         if status in {"SUCCESSFUL", "SUCCESS", "COMPLETED"}:
             return TopupStatus.SUCCEEDED
-        if status in {"PROCESSING", "PENDING"}:
+        if status in {"PROCESSING", "PENDING", "IN_PROGRESS"}:
             return TopupStatus.PENDING
-        if status in {"FAILED", "REFUNDED", "DECLINED"}:
+        if status in {"FAILED", "REFUNDED", "DECLINED", "ERROR"}:
             return TopupStatus.FAILED
-        # Estado desconocido: nunca se interpreta como exito.
+        # Estado desconocido: nunca se interpreta como exito. La documentacion
+        # de Reloadly no garantiza que la lista sea exhaustiva, asi que lo que
+        # no reconocemos va a conciliacion en vez de darse por bueno.
         return TopupStatus.UNKNOWN

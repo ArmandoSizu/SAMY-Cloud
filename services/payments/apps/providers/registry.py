@@ -104,14 +104,27 @@ def describe_all() -> list[dict[str, object]]:
     for meta in payment_registry.describe_all():
         entry = dict(meta)
         try:
-            health = get_provider(str(meta["slug"])).check_health()
+            provider = get_provider(str(meta["slug"]))
+            health = provider.check_health()
             entry["status"] = str(health.status)
             entry["detail"] = health.detail
             entry["missing_requirements"] = list(health.missing_requirements)
             entry["latency_ms"] = health.latency_ms
+            entry["mode"] = str(provider.mode)
+
+            # La llave PUBLICA de la pasarela se expone a proposito: el
+            # navegador la necesita para inicializar el tokenizador. Es
+            # publica por diseno y solo sirve para tokenizar, no para cobrar.
+            #
+            # La llave PRIVADA no sale de aqui jamas, ni siquiera truncada.
+            entry["public_key"] = str(
+                getattr(provider.config, "public_key", "") or ""
+            )
         except Exception as exc:  # noqa: BLE001
             entry["status"] = "ERROR"
             entry["detail"] = str(exc)[:300]
             entry["missing_requirements"] = []
+            entry["mode"] = ""
+            entry["public_key"] = ""
         described.append(entry)
     return described

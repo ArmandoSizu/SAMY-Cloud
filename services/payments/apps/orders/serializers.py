@@ -45,6 +45,40 @@ class StartPaymentSerializer(serializers.Serializer):
     store_id = serializers.UUIDField()
     actor_id = serializers.UUIDField()
     method = serializers.ChoiceField(choices=PaymentMethod.choices)
+    #: Token de tarjeta generado por el tokenizador del proveedor EN EL
+    #: NAVEGADOR. Nunca un numero de tarjeta.
+    #:
+    #: El limite de longitud y el rechazo de espacios no son cosmeticos: si
+    #: alguien intentara mandar aqui un PAN con separadores, se corta en la
+    #: frontera en vez de acabar en un log o en la base.
+    card_token = serializers.RegexField(
+        r"^[A-Za-z0-9_\-]{1,120}$",
+        required=False,
+        allow_blank=True,
+        default="",
+        error_messages={
+            "invalid": "El token de la tarjeta no tiene un formato valido."
+        },
+    )
+
+    def validate_card_token(self, value: str) -> str:
+        """Rechaza cualquier cosa que parezca un numero de tarjeta.
+
+        Un token de Conekta empieza por ``tok_``. Una cadena de 13 a 19
+        digitos no es un token: es un PAN, y aceptarlo aunque fuera por error
+        del cliente meteria datos de tarjeta en un sistema que esta disenado
+        para no verlos nunca.
+        """
+        token = (value or "").strip()
+        if not token:
+            return ""
+        solo_digitos = token.replace(" ", "").replace("-", "")
+        if solo_digitos.isdigit() and 13 <= len(solo_digitos) <= 19:
+            raise serializers.ValidationError(
+                "Eso parece un numero de tarjeta. Aqui solo se acepta un token "
+                "generado por el proveedor: el PAN nunca debe llegar al servidor."
+            )
+        return token
 
 
 class ConfirmCashSerializer(serializers.Serializer):

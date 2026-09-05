@@ -23,9 +23,33 @@ devuelve ``NOT_CONFIGURED`` y toda operacion se detiene antes de tocar la
 orden. No existe ningun camino que produzca un cobro ficticio.
 
 Nota sobre el SDK: se usa ``httpx`` directamente en vez del SDK oficial para
-tener control explicito sobre la cabecera de idempotencia, los timeouts y la
-captura de la respuesta cruda para auditoria. En una integracion de pagos esos
-tres puntos son mas importantes que el azucar sintactico del SDK.
+tener control explicito sobre los timeouts, el manejo de respuestas
+indeterminadas y la captura de la respuesta cruda para auditoria. En una
+integracion de pagos esos tres puntos son mas importantes que el azucar
+sintactico del SDK.
+
+CONEKTA NO TIENE CABECERA DE IDEMPOTENCIA
+------------------------------------------
+
+Esto merece un aviso porque es contraintuitivo y porque este archivo llego a
+afirmar lo contrario. Se reviso la documentacion oficial (Autenticacion,
+Create order, Reintentos de pago) y **Conekta no documenta ninguna cabecera de
+idempotencia**; los unicos encabezados que acepta ``POST /orders`` son
+``Accept-Language`` y ``X-Child-Company-Id``. Enviar ``X-Idempotency-Key`` no
+hace nada: se ignora en silencio, que es la peor forma de fallar porque
+parece que protege.
+
+La proteccion contra doble cobro es NUESTRA y son tres capas:
+
+1. Un ``PaymentAttempt`` que ya tiene ``provider_reference`` no vuelve a crear
+   una orden en Conekta (``create_payment`` lo rechaza).
+2. El token de tarjeta es de un solo uso y caduca en 10 minutos: reutilizarlo
+   falla del lado de Conekta.
+3. ``confirm_payment`` es idempotente: una orden ya PAID ignora
+   confirmaciones repetidas.
+
+Y ``metadata.samy_attempt_id`` permite encontrar en Conekta lo que creamos,
+cuando una respuesta se pierde y hay que averiguar si el cargo existe.
 """
 
 from __future__ import annotations
@@ -65,17 +89,41 @@ from samy_common.providers.exceptions import (
 
 log = structlog.get_logger("provider.conekta")
 
+#: Mismo host para sandbox y produccion. Conekta NO tiene un dominio de
+#: pruebas: lo que distingue el ambiente es la llave, y la respuesta lo
+#: reporta en el campo ``livemode``.
 API_BASE: Final[str] = "https://api.conekta.io"
+
 #: Version de la API fijada explicitamente. Sin esto, Conekta podria servir una
 #: version distinta y cambiar el formato de respuesta sin aviso.
-API_VERSION: Final[str] = "2.1.0"
+API_VERSION: Final[str] = "2.3.0"
 
-#: Estados de Conekta que significan "el dinero esta confirmado".
+#: Script oficial del tokenizador. El PAN se captura DENTRO de un iframe de
+#: Conekta y nunca toca nuestro dominio; al servidor solo llega un token.
+TOKENIZER_SCRIPT: Final[str] = "https://pay.conekta.com/v1.0/js/conekta-checkout.min.js"
+
+#: Estados de una ORDEN que significan "el dinero esta confirmado".
 _CONFIRMED_STATUSES: Final[frozenset[str]] = frozenset({"paid"})
-_PENDING_STATUSES: Final[frozenset[str]] = frozenset({"pending_payment", "partially_paid"})
-_DECLINED_STATUSES: Final[frozenset[str]] = frozenset(
-    {"declined", "expired", "canceled", "voided"}
+
+#: Estados no terminales. ``pre_authorized`` y ``pending_confirmation`` NO son
+#: cobros: el dinero esta reservado o en revision, no capturado. Tratarlos
+#: como pagados entregaria la recarga contra un cargo que aun puede caerse.
+_PENDING_STATUSES: Final[frozenset[str]] = frozenset(
+    {"pending_payment", "pending_confirmation", "pre_authorized", "partially_paid"}
 )
+
+_DECLINED_STATUSES: Final[frozenset[str]] = frozenset(
+    {"declined", "expired", "canceled", "voided", "charged_back", "refunded"}
+)
+
+#: Datos de contacto para una venta de mostrador.
+#:
+#: Conekta exige ``customer_info``, pero en una tienda de barrio el cliente
+#: compra una recarga y se va: no da su correo ni su telefono, y pedirselos
+#: para poder cobrarle seria absurdo. Se envian valores del COMERCIO, no
+#: inventados sobre una persona: no se fabrica la identidad de nadie.
+_EMAIL_MOSTRADOR: Final[str] = "mostrador@samycloud.mx"
+_TELEFONO_MOSTRADOR: Final[str] = "+525500000000"
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,49 +212,64 @@ class ConektaProvider(PaymentProvider):
     # -- cobro -------------------------------------------------------------
 
     def create_payment(self, intent: PaymentIntent) -> PaymentResult:
-        """Crea una orden de cobro en Conekta con checkout hospedado.
+        """Crea la orden en Conekta y la cobra con el token de la tarjeta.
 
-        Se usa checkout hospedado, no captura de tarjeta propia: asi el numero
-        de tarjeta nunca pasa por nuestros servidores y el alcance PCI DSS se
-        mantiene en SAQ A. Ver ``docs/security.md``.
+        El numero de tarjeta NUNCA pasa por aqui. Lo captura el tokenizador de
+        Conekta dentro de su propio iframe y lo que llega a este metodo es un
+        token de un solo uso, que ademas caduca a los 10 minutos. Es lo que
+        mantiene el alcance PCI DSS en SAQ A.
+
+        Sin token no se cobra: se levanta en vez de crear una orden vacia que
+        quedaria colgada en Conekta sin corresponder a nada.
         """
         self.ensure_ready()
 
+        token = (intent.card_token or "").strip()
+        if not token:
+            raise ProviderPermanentError(
+                provider=self.slug,
+                message=(
+                    "Falta el token de la tarjeta. El cobro con tarjeta exige "
+                    "tokenizar primero en el navegador; sin token no se cobra."
+                ),
+            )
+
+        # ``customer_info`` es obligatorio para Conekta. Se envia lo minimo
+        # necesario: nada de datos del cliente que no hagan falta para cobrar.
         payload: dict[str, Any] = {
+            "currency": intent.amount.currency,
+            "customer_info": {
+                "name": (intent.customer_name or "Cliente de mostrador")[:120],
+                "email": intent.customer_email or _EMAIL_MOSTRADOR,
+                "phone": intent.customer_phone or _TELEFONO_MOSTRADOR,
+            },
             "line_items": [
                 {
-                    "name": intent.description[:120],
+                    "name": intent.description[:120] or "Operacion SAMY Cloud",
                     "unit_price": intent.amount.cents,
                     "quantity": 1,
                 }
             ],
-            "currency": intent.amount.currency,
+            "charges": [
+                {
+                    "amount": intent.amount.cents,
+                    "payment_method": {"type": "card", "token_id": token},
+                }
+            ],
+            # Solo valores escalares: Conekta rechaza metadata anidada. Sirve
+            # para reencontrar en Conekta lo que creamos aqui cuando una
+            # respuesta se pierde.
             "metadata": {
                 "samy_order_id": str(intent.order_id),
                 "samy_folio": intent.folio,
                 "samy_store_id": str(intent.store_id),
-            },
-            "checkout": {
-                "type": "Integration",
-                "allowed_payment_methods": ["card"],
-                # Conekta espera minutos de vigencia.
-                "expires_at": int(intent.expires_at.timestamp())
-                if intent.expires_at
-                else None,
+                "samy_attempt_id": intent.idempotency_key,
             },
         }
-        payload = {k: v for k, v in payload.items() if v is not None}
 
         try:
             with self._client() as client:
-                response = client.post(
-                    "/orders",
-                    json=payload,
-                    # Conekta respeta esta cabecera: dos llamadas con la misma
-                    # clave producen un solo cargo. Es la defensa contra el
-                    # doble cobro por reintento.
-                    headers={"X-Idempotency-Key": intent.idempotency_key},
-                )
+                response = client.post("/orders", json=payload)
         except httpx.ReadTimeout as exc:
             # El cuerpo ya salio. El cargo pudo haberse creado. NO se asume
             # fallo: la orden entra a conciliacion y se consulta por la clave
@@ -244,6 +307,8 @@ class ConektaProvider(PaymentProvider):
                 external_code=str(response.status_code),
             )
 
+        self._verificar_ambiente(data)
+
         status = str(data.get("payment_status") or "")
         checkout = data.get("checkout") or {}
 
@@ -254,6 +319,36 @@ class ConektaProvider(PaymentProvider):
             checkout_url=str(checkout.get("url", "")),
             raw_response=self._safe(data),
         )
+
+    def _verificar_ambiente(self, data: dict[str, Any]) -> None:
+        """Comprueba que la respuesta venga del ambiente que creemos usar.
+
+        Conekta usa el mismo dominio y el mismo prefijo de llave para pruebas
+        y produccion; lo unico que distingue el ambiente es el campo
+        ``livemode``. Sin esta comprobacion, una llave de produccion pegada
+        por error en la configuracion de sandbox cobraria dinero real mientras
+        toda la interfaz dice "pruebas".
+        """
+        livemode = data.get("livemode")
+        if livemode is None:
+            return
+
+        es_produccion = self.mode == ProviderMode.PRODUCTION
+        if bool(livemode) != es_produccion:
+            log.error(
+                "conekta_ambiente_no_coincide",
+                configurado=str(self.mode),
+                livemode=livemode,
+            )
+            raise ProviderPermanentError(
+                provider=self.slug,
+                message=(
+                    f"SAMY Cloud esta configurado en modo {self.mode} pero la "
+                    f"llave de Conekta es de {'produccion' if livemode else 'pruebas'}. "
+                    "Se detiene la operacion: revisa CONEKTA_PRIVATE_KEY y "
+                    "CONEKTA_MODE antes de continuar."
+                ),
+            )
 
     def get_payment_status(self, provider_reference: str) -> PaymentResult:
         """Consulta el estado real. Es el mecanismo de conciliacion."""
@@ -397,10 +492,13 @@ class ConektaProvider(PaymentProvider):
     # -- internos ------------------------------------------------------------
 
     def _client(self) -> httpx.Client:
+        # Bearer y no Basic: es lo que declara la documentacion de
+        # autenticacion de Conekta y lo que usan todos sus SDK. (Su propio
+        # ejemplo de cURL muestra Basic, pero es la excepcion.)
         return httpx.Client(
             base_url=API_BASE,
-            auth=(self.config.private_key, ""),
             headers={
+                "Authorization": f"Bearer {self.config.private_key}",
                 "Accept": f"application/vnd.conekta-v{API_VERSION}+json",
                 "Content-Type": "application/json",
                 "Accept-Language": "es",

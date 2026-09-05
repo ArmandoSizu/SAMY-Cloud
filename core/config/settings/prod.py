@@ -73,11 +73,23 @@ PERMISSIONS_POLICY: dict[str, list[str]] = {
 CONTENT_SECURITY_POLICY = {
     "DIRECTIVES": {
         "default-src": ["'self'"],
-        "script-src": ["'self'"],
+        # El tokenizador de Conekta es la UNICA excepcion a "todo desde
+        # nuestro origen", y es una excepcion que MEJORA la seguridad, no que
+        # la relaja: el numero de tarjeta se captura dentro de un iframe de
+        # Conekta y nunca toca nuestro dominio. Autoalojar ese script es
+        # imposible (Conekta no lo distribuye) y, aunque se pudiera, nos
+        # meteria el PAN en casa y con el todo PCI DSS en lugar de SAQ A.
+        #
+        # El alcance es minimo y deliberado: solo pay.conekta.com, solo para
+        # script y frame. No se abre 'unsafe-inline' ni ningun comodin.
+        "script-src": ["'self'", "https://pay.conekta.com"],
+        "frame-src": ["'self'", "https://pay.conekta.com"],
         "style-src": ["'self'"],
         "img-src": ["'self'", "data:", "blob:"],
         "font-src": ["'self'"],
-        "connect-src": ["'self'"],
+        # El iframe del tokenizador habla con la API de Conekta desde el
+        # navegador para crear el token.
+        "connect-src": ["'self'", "https://api.conekta.io"],
         # blob: es necesario para el flujo de camara del lector de codigos.
         "media-src": ["'self'", "blob:"],
         "worker-src": ["'self'", "blob:"],

@@ -76,21 +76,22 @@
           </div>
 
         {% else %}
-          <form method="post" action="{% url 'operations:pay_card' order.id %}">
-            {% csrf_token %}
-            <button type="submit" class="surface surface-pad flex w-full items-center gap-3 text-left transition hover:border-[var(--color-accent-400)]">
-              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                    style="background: var(--color-accent-50); color: var(--color-accent-600);">
-                {% include "_icons.html" with name=method.icon %}
+          {% comment %} Enlace y no formulario: la tarjeta necesita una pantalla
+             propia donde el tokenizador capture los datos. Cobrar desde aqui
+             exigiria que el numero pasara por nuestro servidor. {% endcomment %}
+          <a href="{% url 'operations:card' order.id %}"
+             class="surface surface-pad flex w-full items-center gap-3 text-left transition hover:border-[var(--color-accent-400)]">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                  style="background: var(--color-accent-50); color: var(--color-accent-600);">
+              {% include "_icons.html" with name=method.icon %}
+            </span>
+            <span class="flex-1">
+              <span class="block font-semibold">{{ method.label }}</span>
+              <span class="block text-sm text-[var(--color-ink-500)]">
+                {{ method.description }}{% if method.provider %} &middot; {{ method.provider }}{% endif %}
               </span>
-              <span class="flex-1">
-                <span class="block font-semibold">{{ method.label }}</span>
-                <span class="block text-sm text-[var(--color-ink-500)]">
-                  {{ method.description }}{% if method.provider %} &middot; {{ method.provider }}{% endif %}
-                </span>
-              </span>
-            </button>
-          </form>
+            </span>
+          </a>
         {% endif %}
 
       {% else %}

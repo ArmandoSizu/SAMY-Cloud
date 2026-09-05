@@ -170,6 +170,9 @@ def execute_topup(*, fulfillment: TopupFulfillment) -> TopupFulfillment:
         product_id=fulfillment.product.provider_product_id,
         amount=fulfillment.amount,
         phone_e164=fulfillment.phone_e164,
+        # Se deriva del E.164 guardado en vez de guardar otro campo: dos
+        # columnas con el mismo telefono acabarian divergiendo.
+        phone_national=fulfillment.phone_e164.removeprefix("+52"),
         phone_masked=fulfillment.phone_masked,
         idempotency_key=fulfillment.idempotency_key,
     )

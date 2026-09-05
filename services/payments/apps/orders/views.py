@@ -92,6 +92,7 @@ def start_payment(request: Request, order_id: str) -> Response:
         order=order,
         method=serializer.validated_data["method"],
         actor_id=serializer.validated_data["actor_id"],
+        card_token=serializer.validated_data.get("card_token", ""),
     )
 
     payload = OrderDetailSerializer(order).data

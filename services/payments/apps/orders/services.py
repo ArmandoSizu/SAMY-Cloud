@@ -179,15 +179,45 @@ def start_payment(
     order: Order,
     method: str,
     actor_id: uuid.UUID | str,
+    card_token: str = "",
 ) -> tuple[Order, PaymentAttempt]:
     """Inicia el cobro contra el proveedor. ``CREATED -> PAYMENT_PENDING``.
 
     Si el proveedor no esta configurado, ``ensure_ready()`` levanta antes de
     tocar la orden: la orden se queda en ``CREATED`` y el cajero ve un mensaje
     claro. No se crea un intento fantasma ni se avanza el estado.
+
+    ``card_token`` es el token que genero el tokenizador del proveedor en el
+    navegador. Nunca es un numero de tarjeta: el PAN no pasa por aqui.
+
+    **Guarda contra doble cobro.** Conekta no ofrece cabecera de idempotencia,
+    asi que la proteccion la ponemos nosotros: si la orden ya tiene un intento
+    vivo con referencia del proveedor, no se crea otro. Sin esto, dos clics en
+    "Pagar" serian dos cargos a la misma tarjeta.
     """
     provider = get_provider_for_method(method)
     provider.ensure_ready()
+
+    vivo = (
+        order.attempts.filter(
+            status__in=[
+                PaymentAttemptStatus.INITIATED,
+                PaymentAttemptStatus.AWAITING_CUSTOMER,
+            ]
+        )
+        .exclude(provider_reference="")
+        .order_by("-created_at")
+        .first()
+    )
+    if vivo is not None:
+        log.info(
+            "payment_attempt_reused",
+            order_id=str(order.id),
+            folio=order.folio,
+            attempt_id=str(vivo.id),
+            provider_reference=vivo.provider_reference,
+        )
+        return order, vivo
 
     ttl = _qr_ttl_seconds()
     expires_at = timezone.now() + timedelta(seconds=ttl)
@@ -216,6 +246,10 @@ def start_payment(
         idempotency_key=attempt.idempotency_key,
         store_id=order.store_id,
         method=method,
+        # El token viaja hasta el adaptador y muere ahi. No se guarda en la
+        # base ni se escribe en ningun log: es de un solo uso y, aunque no sea
+        # un PAN, no hay motivo para conservarlo.
+        card_token=card_token,
         expires_at=expires_at,
         metadata={"service_kind": order.service_kind},
     )

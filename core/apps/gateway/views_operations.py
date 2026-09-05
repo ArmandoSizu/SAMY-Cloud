@@ -157,14 +157,74 @@ def pay_cash(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
 
 @login_required
 @require_perm("operation.create")
+@require_GET
+def card_form(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
+    """Pantalla de captura de tarjeta.
+
+    Lo unico que hace es cargar el tokenizador de Conekta. La tarjeta se
+    escribe DENTRO de un iframe suyo: ni el numero ni el CVV pasan por este
+    servidor, ni por esta plantilla, ni por nuestros logs. Lo que vuelve al
+    servidor es un token de un solo uso.
+
+    Se necesita la llave PUBLICA para inicializar el iframe. Es publica por
+    diseno: solo sirve para tokenizar, no para cobrar.
+    """
+    order = _get_order(request, order_id)
+
+    try:
+        proveedores = payments_client().get("/api/v1/providers/").data or {}
+        conekta = next(
+            (
+                p
+                for p in proveedores.get("providers", [])
+                if p.get("slug") == "conekta"
+            ),
+            None,
+        )
+    except ProviderError:
+        conekta = None
+
+    if not conekta or conekta.get("status") != "READY":
+        return render(
+            request,
+            "topups/provider_unavailable.html",
+            {
+                "message": (conekta or {}).get(
+                    "detail", "El cobro con tarjeta no esta disponible."
+                ),
+                "missing_requirements": (conekta or {}).get("missing_requirements", []),
+            },
+            status=503,
+        )
+
+    return render(
+        request,
+        "operations/card.html",
+        {
+            "order": order,
+            "public_key": conekta.get("public_key", ""),
+            "provider_mode": conekta.get("mode", ""),
+        },
+    )
+
+
+@login_required
+@require_perm("operation.create")
 @require_POST
 def pay_card(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
-    """Cobro con tarjeta a traves de la pasarela.
+    """Cobra con el token que genero el tokenizador en el navegador.
 
     Si el proveedor no tiene credenciales, se responde 503 con el detalle y
     **la orden no cambia de estado**. No hay simulacion posible.
     """
-    _get_order(request, order_id)
+    order = _get_order(request, order_id)
+
+    token = (request.POST.get("card_token") or "").strip()
+    if not token:
+        messages.error(
+            request, "No se recibio el token de la tarjeta. Intenta de nuevo."
+        )
+        return redirect("operations:card", order_id=order_id)
 
     try:
         response = payments_client().post(
@@ -173,8 +233,12 @@ def pay_card(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
                 "store_id": str(request.store.id),
                 "actor_id": str(request.user.id),
                 "method": "CARD",
+                "card_token": token,
             },
-            idempotency_key=f"card-{uuid.uuid4().hex}",
+            # La clave se deriva de la orden y del token, no de un aleatorio:
+            # si el cajero reenvia el mismo formulario, la peticion es la
+            # misma y el servicio la reconoce en vez de cobrar dos veces.
+            idempotency_key=f"card-{order_id}-{token[-12:]}",
         )
         data = response.data or {}
     except ProviderNotConfigured as exc:
@@ -185,15 +249,28 @@ def pay_card(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
             status=503,
         )
     except ProviderError as exc:
+        # El token es de un solo uso: si el cobro fallo, hay que capturar la
+        # tarjeta otra vez. Devolver al formulario es lo unico que funciona.
+        log.warning(
+            "card_payment_failed", order_id=str(order_id), error=exc.message
+        )
         messages.error(request, exc.message)
-        return redirect("operations:pay", order_id=order_id)
+        return redirect("operations:card", order_id=order_id)
 
-    attempt = data.get("attempt") or {}
-    return render(
+    audit.record(
         request,
-        "operations/awaiting_payment.html",
-        {"order": data, "attempt": attempt},
+        AuditAction.PAYMENT_ATTEMPTED,
+        object_type="Order",
+        object_id=str(order_id),
+        previous_state=order.get("state", ""),
+        new_state=data.get("state", ""),
+        metadata={"method": "CARD", "folio": data.get("folio", "")},
     )
+
+    # Se va SIEMPRE al comprobante: es la pantalla que muestra el estado real
+    # del pago y de la recarga, y se refresca sola mientras el desenlace se
+    # decide. Anunciar exito aqui seria adelantarse al proveedor.
+    return redirect("operations:receipt", order_id=order_id)
 
 
 # ---------------------------------------------------------------------------

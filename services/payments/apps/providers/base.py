@@ -55,10 +55,26 @@ class PaymentIntent:
     folio: str
     amount: Money
     description: str
-    #: Clave de idempotencia. El proveedor debe usarla para no cobrar dos veces.
+    #: NUESTRA referencia del intento. Viaja al proveedor para poder conciliar.
+    #:
+    #: Ojo con el nombre: que sirva ademas como clave de idempotencia depende
+    #: de cada pasarela y hay que comprobarlo en su documentacion. Conekta, por
+    #: ejemplo, NO acepta cabecera de idempotencia; ahi la proteccion contra
+    #: doble cobro la ponemos nosotros.
     idempotency_key: str
     store_id: uuid.UUID
     method: str
+    #: Token de la tarjeta, generado por el tokenizador del proveedor EN EL
+    #: NAVEGADOR. Es de un solo uso y de vida corta.
+    #:
+    #: Aqui nunca llega un numero de tarjeta ni un CVV: si algun dia este
+    #: campo contuviera un PAN, el sistema entero pasaria de SAQ A a tener que
+    #: cumplir PCI DSS completo.
+    card_token: str = ""
+    #: Datos de contacto minimos que exigen algunas pasarelas.
+    customer_name: str = ""
+    customer_email: str = ""
+    customer_phone: str = ""
     #: Vencimiento del intento (QR, referencia).
     expires_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -114,9 +130,13 @@ class PaymentProvider(BaseProvider[Any], abc.ABC):
     def create_payment(self, intent: PaymentIntent) -> PaymentResult:
         """Inicia el cobro.
 
-        Debe ser **idempotente**: dos llamadas con el mismo
-        ``intent.idempotency_key`` producen un solo cargo y devuelven el mismo
-        ``provider_reference``.
+        **No se asume que el proveedor deduplique.** Muchas pasarelas, Conekta
+        entre ellas, no ofrecen cabecera de idempotencia, asi que evitar el
+        doble cobro es responsabilidad del servicio: un ``PaymentAttempt`` que
+        ya tiene ``provider_reference`` no se vuelve a enviar.
+
+        Ante un timeout, el adaptador debe levantar
+        ``ProviderIndeterminateError`` y nunca reintentar por su cuenta.
         """
         raise NotImplementedError
 
