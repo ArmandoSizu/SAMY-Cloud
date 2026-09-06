@@ -72,13 +72,18 @@ STORAGES = {
     },
 }
 
-# WhiteNoise sirve /static/ desde STATIC_ROOT y arma su indice de archivos al
-# arrancar. En desarrollo eso significa que un archivo nuevo (o editado) da 404
-# o se sirve viejo hasta ejecutar collectstatic Y reiniciar. Cuesta un buen
-# rato entenderlo, porque el archivo esta ahi y el navegador dice que no.
+# WhiteNoise sirve /static/ desde STATIC_ROOT. Estas dos opciones hacen que
+# ademas consulte los finders de Django y relea del disco en cada peticion,
+# de modo que un archivo NUEVO se sirva sin tener que recolectarlo.
 #
-# Con estas dos opciones WhiteNoise consulta los finders de Django en cada
-# peticion y relee del disco: lo que se edita se ve al recargar. Ambas son
-# solo para desarrollo; en produccion se sirve el manifiesto ya compilado.
+# OJO con el limite, que costo tiempo descubrir dos veces: para un archivo que
+# YA fue recolectado, la copia de STATIC_ROOT sigue teniendo prioridad. Editar
+# el original y recargar no basta; se sirve la version vieja sin ningun aviso.
+# Despues de tocar un estatico ya recolectado hay que ejecutar:
+#
+#   docker compose exec core python manage.py collectstatic --noinput
+#
+# y despues recargar el navegador ignorando su cache (Ctrl+Shift+R), porque la
+# respuesta anterior pudo quedar cacheada del lado del cliente.
 WHITENOISE_USE_FINDERS = True
 WHITENOISE_AUTOREFRESH = True

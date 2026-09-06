@@ -30,6 +30,7 @@
 <div class="mx-auto max-w-lg"
      x-data="cobroConTarjeta()"
      data-public-key="{{ public_key }}"
+     data-receipt-url="{% url 'operations:receipt' order.id %}"
      data-debug="{% if debug %}1{% else %}0{% endif %}">
 
   <a href="{% url 'operations:pay' order.id %}"
@@ -107,6 +108,23 @@
     <p class="mt-1 text-sm text-[var(--color-ink-500)]">
       No cierres esta pantalla ni vuelvas atras.
     </p>
+  </div>
+
+  {% comment %}
+  Sin respuesta a tiempo. Este estado existe porque el giro infinito es una
+  mentira: mientras la pantalla decia "Cobrando...", el cobro ya se habia
+  hecho y la orden estaba cerrada. Aqui NO se dice que fallo -pudo cobrarse-
+  ni se ofrece reintentar, que es justo lo que provocaria un doble cargo. Se
+  manda al comprobante, que consulta el estado real.
+  {% endcomment %}
+  <div x-show="indeterminado" x-cloak class="surface surface-pad text-center">
+    <p class="font-semibold">No recibimos confirmacion a tiempo</p>
+    <p class="mt-1 text-sm text-[var(--color-ink-500)]">
+      <strong>El cobro pudo haberse realizado.</strong> No vuelvas a cobrar:
+      revisa el comprobante, que muestra el estado real de la operacion.
+    </p>
+    <a href="{% url 'operations:receipt' order.id %}"
+       class="btn btn-primary btn-block mt-4">Ver el estado real</a>
   </div>
 
   {# El token viaja en un POST normal, con CSRF. #}

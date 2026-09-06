@@ -28,6 +28,32 @@ indeterminadas y la captura de la respuesta cruda para auditoria. En una
 integracion de pagos esos tres puntos son mas importantes que el azucar
 sintactico del SDK.
 
+LA RESPUESTA SINCRONA NO ES LA VERDAD FINAL
+--------------------------------------------
+
+Un ``POST /orders`` con un token de tarjeta suele devolver ya
+``payment_status: paid``, y es tentador tratarlo como el desenlace. No lo es.
+La documentacion de Conekta es explicita en que el estado de un pago puede
+cambiar de forma asincrona: 3D Secure, revisiones antifraude, capturas
+diferidas, contracargos y reembolsos ocurren DESPUES de esa respuesta.
+
+Por eso la verdad se construye con tres fuentes, en este orden:
+
+1. **Respuesta inmediata de la API.** Sirve para no dejar al cajero
+   esperando, y es suficiente para decidir si se entrega el servicio en ese
+   momento. No cierra el caso.
+2. **Consulta y conciliacion.** ``reconcile_indeterminate_orders`` pregunta a
+   Conekta por las ordenes cuyo desenlace quedo en duda (timeout, respuesta
+   ambigua). Es la red de seguridad cuando el webhook no llega.
+3. **Webhook firmado.** Es la unica fuente que entera al sistema de lo que
+   pasa DESPUES: un pago que se cae, un contracargo, un reembolso. En
+   produccion es obligatorio, y sin una URL publica no existe: en local
+   Conekta no puede alcanzar http://localhost, asi que el ciclo asincrono
+   sencillamente no se ejercita. Eso hay que tenerlo presente al probar.
+
+Ninguna de las tres sobra. La primera da respuesta, la segunda repara y la
+tercera entera de los cambios posteriores.
+
 CONEKTA NO TIENE CABECERA DE IDEMPOTENCIA
 ------------------------------------------
 

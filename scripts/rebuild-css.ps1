@@ -13,6 +13,12 @@ $hit2 = Select-String -Path "core\static\css\app.css" -Pattern 'x-cloak' | Selec
 if ($hit2) { Write-Host "  x-cloak: SI" } else { Write-Host "  x-cloak: NO" -ForegroundColor Red }
 
 Write-Host ""
+Write-Host "=== RECOLECTANDO ESTATICOS ===" -ForegroundColor Cyan
+# Imprescindible: WhiteNoise sirve la copia de STATIC_ROOT, asi que editar el
+# original no basta para un archivo ya recolectado.
+docker compose exec -T core python manage.py collectstatic --noinput 2>&1 | Select-Object -Last 2
+
+Write-Host ""
 Write-Host "=== REINICIANDO core ===" -ForegroundColor Cyan
 docker compose restart core | Out-Null
 Start-Sleep -Seconds 12

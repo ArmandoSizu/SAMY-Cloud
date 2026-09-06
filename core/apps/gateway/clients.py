@@ -25,7 +25,7 @@ from django.conf import settings
 from samy_common.http.client import ServiceClient, ServiceClientConfig
 
 
-def _build(service: str) -> ServiceClient:
+def _build(service: str, read_timeout: float | None = None) -> ServiceClient:
     try:
         base_url = settings.SERVICE_URLS[service]
     except KeyError as exc:  # pragma: no cover - error de configuracion
@@ -40,7 +40,7 @@ def _build(service: str) -> ServiceClient:
             secret=settings.SERVICE_S2S_SECRET,
             caller=settings.SERVICE_NAME,
             connect_timeout=settings.SERVICE_TIMEOUT_CONNECT,
-            read_timeout=settings.SERVICE_TIMEOUT_READ,
+            read_timeout=read_timeout or settings.SERVICE_TIMEOUT_READ,
         )
     )
 
@@ -51,6 +51,22 @@ def _build(service: str) -> ServiceClient:
 @lru_cache(maxsize=None)
 def payments_client() -> ServiceClient:
     return _build("payments")
+
+
+@lru_cache(maxsize=None)
+def payments_client_cobro() -> ServiceClient:
+    """Cliente para las llamadas que MUEVEN dinero contra una pasarela.
+
+    Existe por un problema de orden en los limites de tiempo. El cliente
+    normal espera 15 s; payments espera hasta 20 s a Conekta. Es decir, el
+    BFF se rendia ANTES que el servicio al que llamo, en la ventana de 15 a
+    20 segundos: el cajero veia un error mientras el cobro seguia en curso y
+    podia acabar cobrado. El que espera arriba tiene que aguantar mas que el
+    que espera abajo, nunca menos.
+
+    30 s cubre el peor caso de Conekta (20 s) con margen para la red interna.
+    """
+    return _build("payments", read_timeout=30.0)
 
 
 @lru_cache(maxsize=None)

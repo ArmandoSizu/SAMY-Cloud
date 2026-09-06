@@ -29,6 +29,19 @@
 
   var CONTENEDOR = '#conektaIframeContainer';
 
+  /* Limite de espera del cobro, en milisegundos.
+   *
+   * Tiene que ser MAYOR que la suma de los limites del servidor, para que el
+   * navegador no se rinda mientras el servidor sigue trabajando y acabe
+   * contando una historia distinta a la que quedo registrada:
+   *
+   *   core -> payments  : 30 s de lectura (ver ServiceClient en pay_card)
+   *   payments -> Conekta: 20 s de lectura
+   *
+   * 45 s deja margen para el peor caso y sigue estando muy por debajo de lo
+   * que una persona en un mostrador aguantaria mirando una pantalla. */
+  var TIEMPO_LIMITE_MS = 45000;
+
   /* Registro con datos sensibles fuera. Solo habla si la plantilla lo pide
      con data-debug, para no dejar ruido en la consola de una caja real. */
   function crearRegistro(activo) {
@@ -51,6 +64,68 @@
         procesando: false,
         error: '',
         listo: false,
+        //: El cobro salio y no sabemos como termino. NO es un fallo: puede
+        //: haberse cobrado. Por eso tiene su propio estado y su propio texto.
+        indeterminado: false,
+
+        /* Envia el token y RESUELVE la pantalla pase lo que pase.
+         *
+         * Antes esto era un requestSubmit() sobre un formulario oculto: se
+         * confiaba en que el navegador siguiera la redireccion 302 al
+         * comprobante. Cuando esa navegacion no ocurre -por lo que sea- la
+         * pantalla se queda en "Cobrando..." para siempre, mientras el cobro
+         * ya se hizo. Le paso a la primera prueba real con tarjeta.
+         *
+         * Con fetch la respuesta se recibe en JavaScript y la navegacion la
+         * decide esta funcion, que ademas tiene un limite de tiempo. El
+         * cajero nunca se queda mirando un giro infinito.
+         *
+         * NO se reintenta nunca de forma automatica. Si la peticion expira,
+         * el cobro puede haberse realizado igualmente: repetirlo seria
+         * arriesgar un doble cargo. Se manda al comprobante, que consulta el
+         * estado REAL.
+         */
+        enviarCobro: function (tokenId, log) {
+          var self = this;
+          var formulario = this.$refs.formulario;
+          var comprobante = this.$el.dataset.receiptUrl;
+
+          this.procesando = true;
+          this.error = '';
+          this.indeterminado = false;
+          this.$refs.token.value = tokenId;
+
+          var cuerpo = new FormData(formulario);
+          var controlador = new AbortController();
+          var corte = setTimeout(function () {
+            controlador.abort();
+          }, TIEMPO_LIMITE_MS);
+
+          fetch(formulario.action, {
+            method: 'POST',
+            body: cuerpo,
+            credentials: 'same-origin',
+            redirect: 'follow',
+            headers: { 'X-Requested-With': 'fetch' },
+            signal: controlador.signal,
+          })
+            .then(function (respuesta) {
+              clearTimeout(corte);
+              log('cobro_respondido', {
+                estado: respuesta.status,
+                redirigido: respuesta.redirected,
+              });
+              // El servidor redirige al comprobante; fetch ya lo siguio, asi
+              // que respuesta.url es la pantalla final.
+              window.location.assign(respuesta.url || comprobante);
+            })
+            .catch(function (excepcion) {
+              clearTimeout(corte);
+              self.procesando = false;
+              self.indeterminado = true;
+              log('cobro_sin_respuesta', { motivo: excepcion.name });
+            });
+        },
 
         init: function () {
           var raiz = this.$el;
@@ -112,9 +187,7 @@
                      caduca a los diez minutos, asi que no hay nada que ganar
                      esperando. */
                   log('token_creado', { token: tokenParcial(token && token.id) });
-                  self.procesando = true;
-                  self.$refs.token.value = (token && token.id) || '';
-                  self.$refs.formulario.requestSubmit();
+                  self.enviarCobro((token && token.id) || '', log);
                 },
 
                 onCreateTokenError: function (error) {

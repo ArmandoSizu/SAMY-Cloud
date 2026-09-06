@@ -20,7 +20,12 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.audit import services as audit
 from apps.audit.models import AuditAction
-from apps.gateway.clients import billpay_client, payments_client, topups_client
+from apps.gateway.clients import (
+    billpay_client,
+    payments_client,
+    payments_client_cobro,
+    topups_client,
+)
 from apps.tenancy.permissions import require_perm, user_has_perm
 from samy_common.money import Money
 from samy_common.providers.exceptions import ProviderError, ProviderNotConfigured
@@ -233,7 +238,9 @@ def pay_card(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
         return redirect("operations:card", order_id=order_id)
 
     try:
-        response = payments_client().post(
+        # Cliente con espera larga: este POST llega hasta Conekta y el que
+        # espera arriba tiene que aguantar mas que el que espera abajo.
+        response = payments_client_cobro().post(
             f"/api/v1/orders/{order_id}/pay/",
             payload={
                 "store_id": str(request.store.id),

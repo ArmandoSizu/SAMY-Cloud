@@ -55,6 +55,12 @@ def sin_comentarios(plantilla: str) -> str:
     )
 
 
+def sin_comentarios_js(fuente: str) -> str:
+    """Quita comentarios de bloque y de linea de un archivo JavaScript."""
+    sin_bloques = re.sub(r"/\*.*?\*/", "", fuente, flags=re.DOTALL)
+    return re.sub(r"//[^\n]*", "", sin_bloques)
+
+
 class PlantillaTarjetaTests(SimpleTestCase):
     """Lo que la plantilla debe y no debe contener."""
 
@@ -110,8 +116,7 @@ class ArchivoTokenizadorTests(SimpleTestCase):
         self.crudo = JS_TOKENIZADOR.read_text(encoding="utf-8")
         # Igual que en la plantilla: los comentarios explican por que no se
         # tocan el PAN ni el CVV, y para explicarlo los nombran.
-        sin_bloques = re.sub(r"/\*.*?\*/", "", self.crudo, flags=re.DOTALL)
-        self.js = re.sub(r"//[^\n]*", "", sin_bloques)
+        self.js = sin_comentarios_js(self.crudo)
 
     def test_el_archivo_existe(self) -> None:
         self.assertTrue(JS_TOKENIZADOR.is_file())
@@ -147,6 +152,66 @@ class ArchivoTokenizadorTests(SimpleTestCase):
                 self.js.lower(),
                 f"El tokenizador no debe tocar {prohibido}.",
             )
+
+
+class SinGiroInfinitoTests(SimpleTestCase):
+    """El cajero nunca se queda mirando "Cobrando..." para siempre.
+
+    El cobro dejo de depender de que el navegador siguiera la redireccion del
+    POST. Ahora se envia con fetch, la navegacion la decide el JavaScript y
+    hay un limite de tiempo. Si se agota, la pantalla lo dice y manda al
+    comprobante en vez de girar indefinidamente.
+    """
+
+    def setUp(self) -> None:
+        # Sin comentarios: el codigo explica por que ya NO usa requestSubmit,
+        # y buscar sobre el texto crudo encontraria esa explicacion.
+        self.js = sin_comentarios_js(JS_TOKENIZADOR.read_text(encoding="utf-8"))
+        self.html = sin_comentarios(PLANTILLA.read_text(encoding="utf-8"))
+
+    def test_el_cobro_se_envia_con_fetch(self) -> None:
+        self.assertIn("fetch(", self.js)
+
+    def test_ya_no_depende_de_la_navegacion_del_formulario(self) -> None:
+        """requestSubmit deja el desenlace en manos del navegador."""
+        self.assertNotIn(
+            "requestSubmit",
+            self.js,
+            "Volver a requestSubmit reintroduce el giro infinito: si el "
+            "navegador no sigue la redireccion, la pantalla se queda colgada.",
+        )
+
+    def test_hay_un_limite_de_tiempo(self) -> None:
+        self.assertIn("AbortController", self.js)
+        self.assertIn("TIEMPO_LIMITE_MS", self.js)
+
+    def test_el_limite_supera_al_del_servidor(self) -> None:
+        """Rendirse antes que el servidor haria contar una historia falsa."""
+        encontrado = re.search(r"TIEMPO_LIMITE_MS\s*=\s*(\d+)", self.js)
+        self.assertIsNotNone(encontrado)
+        # core -> payments son 30 s; payments -> Conekta, 20 s.
+        self.assertGreater(int(encontrado.group(1)), 30000)
+
+    def test_no_se_reintenta_solo(self) -> None:
+        """Reintentar tras un timeout es la receta del doble cargo."""
+        self.assertNotIn("retry", self.js.lower())
+
+    def test_existe_el_estado_indeterminado(self) -> None:
+        self.assertIn("indeterminado", self.js)
+        self.assertIn('x-show="indeterminado"', self.html)
+
+    def test_el_estado_indeterminado_no_afirma_que_fallo(self) -> None:
+        """Puede haberse cobrado: decir "fallo" seria mentir."""
+        self.assertIn("pudo haberse realizado", self.html)
+
+    def test_el_estado_indeterminado_lleva_al_comprobante(self) -> None:
+        self.assertIn("data-receipt-url", self.html)
+        self.assertIn("operations:receipt", self.html)
+
+    def test_no_ofrece_reintentar_el_cobro(self) -> None:
+        indeterminado = self.html[self.html.index('x-show="indeterminado"') :][:900]
+        for tentacion in ("Reintentar", "Cobrar de nuevo", "Volver a cobrar"):
+            self.assertNotIn(tentacion, indeterminado)
 
 
 class EstilosTokenizadorTests(SimpleTestCase):
