@@ -31,6 +31,8 @@ from django.test import SimpleTestCase
 RAIZ = Path(settings.BASE_DIR)
 PLANTILLA = RAIZ / "templates" / "operations" / "card.html"
 JS_TOKENIZADOR = RAIZ / "static" / "js" / "conekta-tokenizer.js"
+CSS_FUENTE = RAIZ / "assets" / "app.css"
+#: Artefacto de compilacion: no se versiona, puede no existir en un clon nuevo.
 CSS_COMPILADO = RAIZ / "static" / "css" / "app.css"
 
 #: Script oficial vigente del tokenizador.
@@ -148,20 +150,36 @@ class ArchivoTokenizadorTests(SimpleTestCase):
 
 
 class EstilosTokenizadorTests(SimpleTestCase):
-    """La regla que da altura al iframe tiene que estar en el CSS compilado."""
+    """La regla que da altura al iframe, en la fuente y en lo compilado."""
 
-    def test_la_clase_llego_al_css_compilado(self) -> None:
-        """Editar assets/app.css no basta: hay que recompilar."""
+    def test_la_regla_esta_en_la_fuente(self) -> None:
+        """assets/app.css es lo que se versiona: aqui la regla debe existir."""
+        css = CSS_FUENTE.read_text(encoding="utf-8").replace(" ", "")
+        self.assertIn(".conekta-tokenizer", css)
+
+        inicio = css.index(".conekta-tokenizer")
+        bloque = css[inicio : inicio + 400]
+        # Las dos mitades del arreglo. Sin position no hay contra que medir el
+        # 100% del iframe; sin height el ancestro sigue en auto y el iframe
+        # vuelve a quedar en cero.
+        self.assertIn("position:relative", bloque)
+        self.assertIn("height:", bloque)
+
+    def test_la_regla_llego_al_css_compilado(self) -> None:
+        """Editar la fuente no basta: hay que recompilar.
+
+        app.css es un artefacto de compilacion y no se versiona, asi que en un
+        clon recien hecho todavia no existe. En ese caso no hay nada que
+        comprobar; lo que esta prueba atrapa es el caso real: tener un
+        app.css compilado y desactualizado, que es lo que hace que el arreglo
+        parezca no funcionar.
+        """
+        if not CSS_COMPILADO.is_file():
+            self.skipTest("No hay CSS compilado todavia (npm run build:css).")
+
         css = CSS_COMPILADO.read_text(encoding="utf-8")
         self.assertIn(
             "conekta-tokenizer",
             css,
-            "La clase no esta en el CSS compilado. Ejecuta: npm run build:css",
+            "El CSS compilado esta desactualizado. Ejecuta: npm run build:css",
         )
-
-    def test_la_regla_posiciona_y_da_altura(self) -> None:
-        css = CSS_COMPILADO.read_text(encoding="utf-8").replace(" ", "")
-        inicio = css.index(".conekta-tokenizer")
-        bloque = css[inicio : inicio + 400]
-        self.assertIn("position:relative", bloque)
-        self.assertIn("height:", bloque)
