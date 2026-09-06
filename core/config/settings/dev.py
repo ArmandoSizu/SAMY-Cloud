@@ -6,6 +6,7 @@ heredarlos por descuido.
 
 from config.settings.base import *  # noqa: F403
 from config.settings.base import INSTALLED_APPS, MIDDLEWARE, env
+from config.settings.csp import DIRECTIVAS
 
 DEBUG = True
 
@@ -32,6 +33,22 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # con un limite alto para no bloquearse uno mismo probando el login.
 AXES_FAILURE_LIMIT = 20
 
+# ---------------------------------------------------------------------------
+# CSP en modo SOLO REPORTE
+# ---------------------------------------------------------------------------
+# Las mismas directivas que produccion, pero sin bloquear nada: el navegador
+# escribe en la consola cada recurso que produccion rechazaria.
+#
+# Motivo concreto: la pantalla de cobro con tarjeta llevaba su JavaScript en
+# un <script> en linea. Aqui funcionaba y en produccion la CSP lo habria
+# bloqueado, dejando la pantalla completa pero sin formulario de tarjeta y sin
+# ningun error que lo delatara. Con esto, ese fallo aparece el dia que se
+# escribe el codigo y no el dia del despliegue.
+#
+# Se omite upgrade-insecure-requests a proposito: aqui se entra por http.
+CONTENT_SECURITY_POLICY_REPORT_ONLY = {"DIRECTIVES": DIRECTIVAS}
+MIDDLEWARE = ["csp.middleware.CSPMiddleware"] + MIDDLEWARE
+
 INSTALLED_APPS = INSTALLED_APPS + ["django_extensions"] if env.bool(
     "USE_DJANGO_EXTENSIONS", default=False
 ) else INSTALLED_APPS
@@ -54,3 +71,14 @@ STORAGES = {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
+
+# WhiteNoise sirve /static/ desde STATIC_ROOT y arma su indice de archivos al
+# arrancar. En desarrollo eso significa que un archivo nuevo (o editado) da 404
+# o se sirve viejo hasta ejecutar collectstatic Y reiniciar. Cuesta un buen
+# rato entenderlo, porque el archivo esta ahi y el navegador dice que no.
+#
+# Con estas dos opciones WhiteNoise consulta los finders de Django en cada
+# peticion y relee del disco: lo que se edita se ve al recargar. Ambas son
+# solo para desarrollo; en produccion se sirve el manifiesto ya compilado.
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True

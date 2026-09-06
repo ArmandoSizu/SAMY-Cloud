@@ -425,9 +425,64 @@
 }
 
 /* ==========================================================================
+   Tokenizador de Conekta
+   ==========================================================================
+
+   Conekta monta su formulario de tarjeta con zoid (el mismo motor de
+   componentes que usa PayPal). Zoid inyecta dentro del contenedor un <div>
+   envoltorio y, dentro de el, un <iframe> con position:absolute y alto 100%.
+
+   Un elemento absoluto con alto 100% mide contra su ancestro POSICIONADO mas
+   cercano. Si no hay ninguno, o si ese ancestro tiene el alto en auto, el
+   100% no resuelve y el iframe queda con CERO pixeles de alto. El
+   contenedor se ve blanco y vacio aunque el iframe este montado, cargado y
+   funcionando: no hay error en consola ni peticion fallida que lo delate.
+
+   Un min-height en el contenedor NO basta: el envoltorio de zoid sigue con
+   alto auto, y un hijo absoluto no aporta alto a su padre. Hace falta las
+   dos cosas: contenedor posicionado con alto real, y envoltorio e iframe
+   estirados a ese alto.
+
+   El alto se fija en una variable para poder ajustarlo desde la plantilla si
+   Conekta cambia el formulario (por ejemplo al anadir 3DS o meses sin
+   intereses).
+   ========================================================================== */
+.conekta-tokenizer {
+  position: relative;
+  height: var(--conekta-tokenizer-height, 560px);
+  width: 100%;
+}
+
+/* El envoltorio que inyecta zoid. Se selecciona por posicion y no por id
+   porque el id lleva un identificador aleatorio en cada montaje. */
+.conekta-tokenizer > div {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.conekta-tokenizer iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* El iframe oculto que zoid usa para detectar el cierre no debe ocupar
+   espacio ni empujar el formulario. */
+.conekta-tokenizer iframe[name^="__detect_close"] {
+  display: none !important;
+}
+
+/* ==========================================================================
    Utilidades
    ========================================================================== */
 @layer utilities {
+  /* Alpine quita x-cloak al arrancar. Vive aqui y no en un <style> en linea
+     porque la CSP de produccion no permite 'unsafe-inline' en style-src: un
+     bloque en linea se ignoraria al desplegar y los elementos marcados con
+     x-cloak apareceran un instante antes de que Alpine los oculte. */
+  [x-cloak] { display: none !important; }
+
   /* Oculta visualmente pero deja el texto disponible para lectores de pantalla. */
   .sr-only-focusable:not(:focus):not(:focus-within) {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

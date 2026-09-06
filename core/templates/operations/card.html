@@ -1,5 +1,7 @@
 {% extends "_app.html" %}
 
+{% load static %}
+
 {% block title %}Cobro con tarjeta &middot; {{ BRAND_FULL }}{% endblock %}
 
 {% comment %}
@@ -18,7 +20,17 @@
 {% endcomment %}
 
 {% block content %}
-<div class="mx-auto max-w-lg" x-data="cobroConTarjeta()">
+{% comment %}
+  La llave PUBLICA viaja como data-attribute, no interpolada dentro de un
+  <script>. Dos motivos: el JavaScript queda en un archivo estatico que la CSP
+  de produccion permite servir, y no hay codigo generado por servidor con
+  valores dentro. Es la llave publica del tokenizador: esta pensada para
+  viajar al navegador. La privada no sale nunca de payments.
+{% endcomment %}
+<div class="mx-auto max-w-lg"
+     x-data="cobroConTarjeta()"
+     data-public-key="{{ public_key }}"
+     data-debug="{% if debug %}1{% else %}0{% endif %}">
 
   <a href="{% url 'operations:pay' order.id %}"
      class="mb-5 inline-flex items-center gap-1.5 text-sm font-medium"
@@ -71,9 +83,16 @@
     </p>
   </div>
 
-  {# ============ Iframe del tokenizador ============ #}
+  {% comment %}
+  ============ Iframe del tokenizador ============
+
+  El alto y el posicionamiento viven en la clase .conekta-tokenizer, en
+  app.css. No es decoracion: sin ellos el iframe de Conekta se monta con cero
+  pixeles de alto y el area queda en blanco. La explicacion completa esta
+  junto a la regla en app.css.
+  {% endcomment %}
   <div class="surface overflow-hidden" x-show="!procesando">
-    <div id="conektaIframeContainer" style="min-height: 420px;"></div>
+    <div id="conektaIframeContainer" class="conekta-tokenizer"></div>
   </div>
 
   <p x-show="error" x-cloak class="field-error mt-3" role="alert" x-text="error"></p>
@@ -99,53 +118,22 @@
 </div>
 {% endblock %}
 
-{% block extra_head %}<style>[x-cloak]{display:none!important}</style>{% endblock %}
-
 {% block extra_scripts %}
 {% comment %}
   Unico script de terceros de todo el producto, y la CSP solo permite este
   origen. Ver la nota de CONTENT_SECURITY_POLICY en config/settings/prod.py:
   es una excepcion que mejora la seguridad, porque saca la tarjeta de casa.
+
+  El codigo que lo inicializa va en un archivo estatico propio, NO en un
+  <script> aqui dentro. La CSP de produccion no permite 'unsafe-inline' en
+  script-src: un bloque en linea funciona en desarrollo (sin CSP) y el
+  navegador lo bloquea al desplegar, dejando la pantalla de cobro completa
+  pero sin formulario de tarjeta y sin ninguna pista de por que.
+
+  Orden importante: primero el script de Conekta, despues el nuestro. Alpine
+  se carga al final del <body> (ver base.html), asi que cuando arranca ya
+  encuentra el componente registrado.
 {% endcomment %}
 <script src="https://pay.conekta.com/v1.0/js/conekta-checkout.min.js"></script>
-<script>
-  document.addEventListener('alpine:init', () => {
-    window.Alpine.data('cobroConTarjeta', () => ({
-      procesando: false,
-      error: '',
-
-      init() {
-        if (!window.ConektaCheckoutComponents) {
-          this.error = 'No se pudo cargar el formulario de pago. Revisa la conexion.';
-          return;
-        }
-
-        window.ConektaCheckoutComponents.Card({
-          config: {
-            targetIFrame: '#conektaIframeContainer',
-            publicKey: '{{ public_key|escapejs }}',
-            locale: 'es',
-          },
-          callbacks: {
-            onCreateTokenSucceeded: (token) => {
-              // Se envia en cuanto llega: el token caduca a los 10 minutos y
-              // es de un solo uso, asi que no hay nada que ganar esperando.
-              this.procesando = true;
-              this.$refs.token.value = token.id;
-              this.$refs.formulario.requestSubmit();
-            },
-            onCreateTokenError: (error) => {
-              // Se muestra el mensaje del proveedor tal cual. Traducirlo a un
-              // "algo salio mal" generico deja al cajero sin saber si el
-              // problema es la tarjeta, la fecha o el CVV.
-              this.procesando = false;
-              this.error = (error && (error.message_to_purchaser || error.message))
-                || 'No se pudo procesar la tarjeta. Verifica los datos.';
-            },
-          },
-        });
-      },
-    }));
-  });
-</script>
+<script src="{% static 'js/conekta-tokenizer.js' %}"></script>
 {% endblock %}

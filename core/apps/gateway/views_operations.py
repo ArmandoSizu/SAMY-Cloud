@@ -11,6 +11,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 
 import structlog
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpRequest, HttpResponse
@@ -204,6 +205,11 @@ def card_form(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
             "order": order,
             "public_key": conekta.get("public_key", ""),
             "provider_mode": conekta.get("mode", ""),
+            # Habilita los registros del tokenizador en la consola del
+            # navegador. Solo en desarrollo: en una caja real no interesa el
+            # ruido, y aunque esos registros nunca incluyen PAN, CVV ni el
+            # token completo, cuanto menos se publique, mejor.
+            "debug": settings.DEBUG,
         },
     )
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from config.settings.base import *  # noqa: F403
 from config.settings.base import MIDDLEWARE, env
+from config.settings.csp import DIRECTIVAS_PRODUCCION
 
 DEBUG = False
 
@@ -70,36 +71,11 @@ PERMISSIONS_POLICY: dict[str, list[str]] = {
 # ---------------------------------------------------------------------------
 # Sin 'unsafe-inline' en scripts: HTMX y Alpine se cargan como archivos
 # estaticos propios, no desde CDN ni en linea. Ver docs/security.md.
-CONTENT_SECURITY_POLICY = {
-    "DIRECTIVES": {
-        "default-src": ["'self'"],
-        # El tokenizador de Conekta es la UNICA excepcion a "todo desde
-        # nuestro origen", y es una excepcion que MEJORA la seguridad, no que
-        # la relaja: el numero de tarjeta se captura dentro de un iframe de
-        # Conekta y nunca toca nuestro dominio. Autoalojar ese script es
-        # imposible (Conekta no lo distribuye) y, aunque se pudiera, nos
-        # meteria el PAN en casa y con el todo PCI DSS en lugar de SAQ A.
-        #
-        # El alcance es minimo y deliberado: solo pay.conekta.com, solo para
-        # script y frame. No se abre 'unsafe-inline' ni ningun comodin.
-        "script-src": ["'self'", "https://pay.conekta.com"],
-        "frame-src": ["'self'", "https://pay.conekta.com"],
-        "style-src": ["'self'"],
-        "img-src": ["'self'", "data:", "blob:"],
-        "font-src": ["'self'"],
-        # El iframe del tokenizador habla con la API de Conekta desde el
-        # navegador para crear el token.
-        "connect-src": ["'self'", "https://api.conekta.io"],
-        # blob: es necesario para el flujo de camara del lector de codigos.
-        "media-src": ["'self'", "blob:"],
-        "worker-src": ["'self'", "blob:"],
-        "frame-ancestors": ["'none'"],
-        "form-action": ["'self'"],
-        "base-uri": ["'self'"],
-        "object-src": ["'none'"],
-        "upgrade-insecure-requests": True,
-    }
-}
+#
+# Las directivas viven en config/settings/csp.py porque desarrollo las aplica
+# tambien, en modo solo reporte. Una CSP que solo existe en produccion es una
+# CSP que se descubre rota en produccion.
+CONTENT_SECURITY_POLICY = {"DIRECTIVES": DIRECTIVAS_PRODUCCION}
 MIDDLEWARE = ["csp.middleware.CSPMiddleware"] + MIDDLEWARE
 
 # ---------------------------------------------------------------------------
