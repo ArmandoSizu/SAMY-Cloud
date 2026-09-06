@@ -472,3 +472,68 @@ class EventosDeCargoTests(WebhookBase):
         self.assertEqual(
             ReceivedWebhook.objects.get().provider_reference, "ord_prueba_123"
         )
+
+
+@override_settings(
+    CONEKTA_PRIVATE_KEY="key_de_prueba",
+    CONEKTA_PUBLIC_KEY="key_publica_de_prueba",
+    CONEKTA_WEBHOOK_PUBLIC_KEY=_LLAVE_PUBLICA_PEM,
+)
+class EventosQueDevuelvenDineroTests(WebhookBase):
+    """Reembolsos y eventos desconocidos.
+
+    Son los eventos que menos se prueban y los que mas caro salen cuando
+    fallan en silencio: llegan cuando el cliente ya reclamo.
+    """
+
+    def test_un_reembolso_encuentra_su_orden(self) -> None:
+        cuerpo = _evento_cargo(
+            order_id="ord_prueba_123",
+            monto_cents=5300,
+            estado="refunded",
+            tipo="charge.refunded",
+        )
+
+        respuesta = self._enviar(cuerpo)
+
+        self.assertEqual(respuesta.status_code, 200)
+        registro = ReceivedWebhook.objects.get()
+        self.assertEqual(registro.provider_reference, "ord_prueba_123")
+        self.assertNotEqual(registro.result, WebhookProcessingResult.ORDER_NOT_FOUND)
+
+    def test_un_reembolso_no_deja_la_orden_como_pagada(self) -> None:
+        """"refunded" no es un cobro. Marcarlo como tal entregaria el servicio."""
+        self._enviar(
+            _evento_cargo(
+                order_id="ord_prueba_123",
+                monto_cents=5300,
+                estado="refunded",
+                tipo="charge.refunded",
+            )
+        )
+
+        self.order.refresh_from_db()
+        self.assertNotEqual(self.order.state, OrderState.PAID)
+
+    def test_un_evento_desconocido_se_registra_y_no_rompe(self) -> None:
+        """Conekta puede mandar tipos que no manejamos. No es un error 500.
+
+        Lo importante es que quede auditable y que NO toque ninguna orden:
+        un evento que no entendemos no puede cambiar dinero.
+        """
+        cuerpo = _evento_cargo(
+            order_id="ord_prueba_123",
+            monto_cents=5300,
+            estado="un_estado_que_no_existe",
+            tipo="charge.algo_nuevo",
+        )
+
+        respuesta = self._enviar(cuerpo)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.state, OrderState.PAYMENT_PENDING)
+        registro = ReceivedWebhook.objects.get()
+        self.assertEqual(registro.event_type, "charge.algo_nuevo")
+        # Queda anotado como no terminal: la conciliacion decidira.
+        self.assertEqual(registro.result, WebhookProcessingResult.IGNORED)

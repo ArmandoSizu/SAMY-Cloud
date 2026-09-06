@@ -1,0 +1,49 @@
+{% extends "_app.html" %}
+
+{% block title %}{{ operator.name }} &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Paso 2 de 3: que quiere recargar.
+
+  Es la pregunta que el cajero hace de verdad: "saldo o paquete?". Las
+  familias vienen del operador, no de una lista fija: Telcel tiene Amigo Sin
+  Limite e Internet Amigo, y Unefon no.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl">
+
+  <a href="{% url 'topups:catalog' %}"
+     class="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-ink-500">
+    {% include "_icons.html" with name="arrow-left" %}
+    Otra compania
+  </a>
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight">{{ operator.name }}</h1>
+    <p class="mt-1 text-ink-500">Paso 1 de 3 &middot; Que deseas recargar</p>
+  </header>
+
+  {% if operator.families %}
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {% for family in operator.families %}
+        <a href="{% url 'topups:products' operator.code|lower family.code|lower %}"
+           class="surface surface-pad min-h-26 flex flex-col justify-center">
+          <p class="font-semibold">{{ family.name }}</p>
+          {% if family.description %}
+            <p class="mt-1 text-sm text-ink-500">{{ family.description }}</p>
+          {% endif %}
+          <p class="mt-2 text-xs text-ink-400">
+            {{ family.products|length }} opcion{{ family.products|length|pluralize:"es" }}
+          </p>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="surface surface-pad text-center">
+      <p class="font-semibold">Esta compania no tiene productos cargados</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

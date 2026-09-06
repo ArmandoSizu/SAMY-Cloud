@@ -1,0 +1,138 @@
+{% extends "_app.html" %}
+
+{% block title %}Catalogo de recargas &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Administracion -> Recargas -> Catalogo.
+
+  Aqui SI se muestra todo lo que la pantalla de caja oculta. La pregunta que
+  esta tabla tiene que contestar de un vistazo no es "que productos hay" sino
+  "por que no se pueden vender todavia".
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Catalogo de recargas</h1>
+    <p class="mt-1 text-ink-500">
+      Productos comerciales, su procedencia oficial y su capacidad real de ejecucion.
+    </p>
+  </header>
+
+  {% if error %}
+    <div class="mb-5 rounded-lg px-4 py-3 bg-danger-100 text-danger-600" role="alert">
+      <p class="text-sm">{{ error }}</p>
+    </div>
+  {% endif %}
+
+  <div class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div class="surface surface-pad">
+      <p class="stat-label">Productos</p>
+      <p class="stat-value">{{ totals.all|default:0 }}</p>
+    </div>
+    <div class="surface surface-pad">
+      <p class="stat-label">Vendibles</p>
+      <p class="stat-value {% if totals.sellable %}text-success-600{% else %}text-ink-400{% endif %}">
+        {{ totals.sellable|default:0 }}
+      </p>
+    </div>
+    <div class="surface surface-pad">
+      <p class="stat-label">Bloqueados</p>
+      <p class="stat-value {% if totals.blocked %}text-warning-600{% endif %}">
+        {{ totals.blocked|default:0 }}
+      </p>
+    </div>
+    <div class="surface surface-pad">
+      <p class="stat-label">Ambiente</p>
+      <p class="mt-1 text-lg font-semibold">{{ environment|default:"-" }}</p>
+      <p class="mt-1 text-xs text-ink-500">
+        Listos: {{ ready_providers|join:", "|default:"ninguno" }}
+      </p>
+    </div>
+  </div>
+
+  {% if bloqueos %}
+    <div class="surface surface-pad mb-6">
+      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-500">
+        Por que estan bloqueados
+      </h2>
+      <ul class="space-y-1.5 text-sm">
+        {% for etiqueta, cuantos in bloqueos %}
+          <li class="flex justify-between">
+            <span>{{ etiqueta }}</span>
+            <span class="tabular font-semibold">{{ cuantos }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="surface overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="border-b border-ink-200 text-left">
+        <tr class="text-xs uppercase tracking-wider text-ink-500">
+          <th class="px-4 py-3">Operador</th>
+          <th class="px-4 py-3">Familia</th>
+          <th class="px-4 py-3">Producto</th>
+          <th class="px-4 py-3">Precio</th>
+          <th class="px-4 py-3">Fuente</th>
+          <th class="px-4 py-3">Folio</th>
+          <th class="px-4 py-3">Verificado</th>
+          <th class="px-4 py-3">Ver.</th>
+          <th class="px-4 py-3">Mapping</th>
+          <th class="px-4 py-3">Estado</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-ink-200">
+        {% for p in products %}
+          <tr>
+            <td class="px-4 py-3 font-medium">{{ p.operator }}</td>
+            <td class="px-4 py-3 text-ink-500">{{ p.family }}</td>
+            <td class="px-4 py-3">{{ p.commercial_name }}</td>
+            <td class="px-4 py-3 tabular">{{ p.price_display }}</td>
+            <td class="px-4 py-3">
+              {% if p.official_source %}
+                <a href="{{ p.official_source }}" rel="noopener noreferrer" target="_blank"
+                   class="text-accent-600">oficial</a>
+              {% else %}
+                <span class="text-ink-400">-</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 tabular text-xs text-ink-500">
+              {{ p.official_tariff_reference|default:"-" }}
+            </td>
+            <td class="px-4 py-3 text-xs text-ink-500">{{ p.verified_at|slice:":10"|default:"-" }}</td>
+            <td class="px-4 py-3 tabular text-xs">{{ p.version|default:"-" }}</td>
+            <td class="px-4 py-3 text-xs">
+              {% for m in p.mappings %}
+                <div>
+                  {{ m.provider }} / {{ m.environment }}
+                  {% if not m.enabled %}<span class="text-ink-400">(apagado)</span>{% endif %}
+                </div>
+              {% empty %}
+                <span class="text-warning-600">sin mapping</span>
+              {% endfor %}
+            </td>
+            <td class="px-4 py-3">
+              {% if p.sellable %}
+                <span class="badge badge-success">Disponible</span>
+              {% else %}
+                <span class="badge badge-warning">{{ p.status_label }}</span>
+                <p class="mt-1 text-xs text-ink-500">{{ p.blocked_reason }}</p>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="10" class="px-4 py-8 text-center text-ink-500">
+              No hay productos comerciales cargados.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

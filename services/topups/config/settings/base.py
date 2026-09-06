@@ -25,6 +25,10 @@ INSTALLED_APPS = [
     "rest_framework",
     "drf_spectacular",
     "apps.catalog",
+    # Catalogo COMERCIAL. Va separado de apps.catalog a proposito: uno es lo
+    # que el proveedor dice que vende, el otro lo que SAMY Cloud decide
+    # vender. Ver la nota de apps/commercial/models.py.
+    "apps.commercial",
     "apps.fulfillment",
     "apps.providers",
     "apps.outbox",

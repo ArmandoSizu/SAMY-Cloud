@@ -384,3 +384,17 @@ def _find_product(operator: dict | None, product_id: str) -> dict | None:
 
 def _money(cents) -> str:
     return str(Money(int(cents or 0)))
+
+
+# --- Pantalla comercial ---------------------------------------------------
+#
+# Las vistas del catalogo comercial viven en views_commercial.py y se
+# reexportan aqui para que urls_topups.py siga apuntando a un solo modulo.
+# Separarlas es a proposito: este archivo orquesta el flujo tecnico que ya
+# funciona, y aquel construye la experiencia de mostrador. Mezclarlos haria
+# que tocar la vitrina obligara a releer la tuberia del dinero.
+from apps.gateway.views_commercial import (  # noqa: E402,F401
+    commercial_catalog,
+    commercial_families,
+    commercial_products,
+)

@@ -1,0 +1,85 @@
+{% extends "_app.html" %}
+
+{% block title %}Recargas &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Paso 1 de 3: la compania.
+
+  Telcel va primero porque asi lo dice display_priority, no porque la
+  plantilla lo sepa. Cambiar el operador principal es cambiar un numero en la
+  base; esta plantilla no se entera.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Recargas</h1>
+    <p class="mt-1 text-ink-500">Elige la compania del cliente.</p>
+  </header>
+
+  {% if error %}
+    <div class="mb-5 flex items-start gap-2.5 rounded-lg px-4 py-3 bg-danger-100 text-danger-600" role="alert">
+      <span class="mt-0.5">{% include "_icons.html" with name="alert" %}</span>
+      <p class="text-sm">{{ error }}</p>
+    </div>
+  {% endif %}
+
+  {% if environment == "SANDBOX" %}
+    <div class="mb-5 flex items-start gap-2.5 rounded-lg px-4 py-3 bg-warning-100 text-warning-600">
+      <span class="badge badge-warning">Sandbox</span>
+      <p class="text-sm">
+        Ambiente de PRUEBAS. Ninguna recarga llega a un telefono real.
+      </p>
+    </div>
+  {% endif %}
+
+  {% comment %}
+  El aviso de que todavia no se puede vender nada va arriba y sin rodeos. Un
+  cajero que va tocando productos uno por uno hasta descubrir que ninguno se
+  puede cobrar pierde el tiempo y la confianza en la herramienta.
+  {% endcomment %}
+  {% if operators and not any_sellable %}
+    <div class="mb-5 rounded-lg px-4 py-3 bg-ink-50">
+      <p class="text-sm font-medium">Todavia no se pueden cobrar recargas</p>
+      <p class="mt-1 text-sm text-ink-500">
+        El catalogo esta cargado y verificado, pero falta el proveedor comercial
+        que las ejecute. Puedes consultar los productos; el boton de cobro se
+        habilita cuando el proveedor quede activo.
+      </p>
+    </div>
+  {% endif %}
+
+  {% if operators %}
+    <div class="space-y-3">
+      {% for operator in operators %}
+        <a href="{% url 'topups:families' operator.code|lower %}"
+           class="surface surface-pad flex items-center gap-4 transition hover:shadow-md">
+          <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-base font-bold bg-ink-100 text-ink-600"
+               aria-hidden="true">{{ operator.name|slice:":2"|upper }}</div>
+          <div class="min-w-0 flex-1">
+            <p class="font-semibold">{{ operator.name }}</p>
+            {% if operator.is_primary %}
+              <p class="text-xs font-medium text-accent-600">Operador principal</p>
+            {% elif operator.sellable_count %}
+              <p class="text-xs text-ink-500">{{ operator.sellable_count }} disponibles</p>
+            {% else %}
+              <p class="text-xs text-ink-400">Sin proveedor por ahora</p>
+            {% endif %}
+          </div>
+          <span class="shrink-0 text-ink-400">{% include "_icons.html" with name="arrow-right" %}</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% elif not error %}
+    <div class="surface surface-pad text-center">
+      <p class="font-semibold">El catalogo comercial esta vacio</p>
+      <p class="mt-1 text-sm text-ink-500">
+        Carga los productos verificados con
+        <code class="rounded px-1 bg-ink-100">cargar_catalogo_comercial</code>.
+      </p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

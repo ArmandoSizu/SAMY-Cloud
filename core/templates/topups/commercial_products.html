@@ -1,0 +1,71 @@
+{% extends "_app.html" %}
+
+{% block title %}{{ family.name }} &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  Paso 3 de 3: el monto.
+
+  Cada tarjeta muestra lo que el operador publica y NADA mas. Si no hay
+  vigencia verificada, no se pone una vigencia; si no hay GB verificados, no
+  se ponen GB. Inventar un beneficio aqui es prometerle al cliente algo que
+  la compania no le va a dar, y el que da la cara es el tendero.
+
+  Un producto que hoy no se puede ejecutar se muestra en gris y sin boton. No
+  se esconde: el cajero tiene que poder ver que SAMY Cloud si conoce ese
+  producto y que el problema es otro.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl">
+
+  <a href="{% url 'topups:families' operator.code|lower %}"
+     class="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-ink-500">
+    {% include "_icons.html" with name="arrow-left" %}
+    Otra opcion
+  </a>
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight">{{ family.name }}</h1>
+    <p class="mt-1 text-ink-500">{{ operator.name }} &middot; Paso 2 de 3 &middot; Elige el monto</p>
+  </header>
+
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    {% for product in family.products %}
+      <div class="surface surface-pad min-h-30 flex flex-col {% if not product.sellable %}opacity-60{% endif %}">
+
+        <p class="text-2xl font-semibold tabular tracking-tight">{{ product.price_display }}</p>
+        <p class="mt-0.5 text-xs text-ink-500">{{ product.commercial_name }}</p>
+
+        <dl class="mt-2 space-y-0.5 text-xs text-ink-500">
+          {% if product.validity_days %}
+            <div><dt class="inline">Vigencia:</dt> <dd class="inline">{{ product.validity_days }} d&iacute;as</dd></div>
+          {% endif %}
+          {% if product.data_mb %}
+            <div><dt class="inline">Datos:</dt> <dd class="inline">{{ product.data_mb }} MB</dd></div>
+          {% endif %}
+          {% if product.benefits %}
+            <div class="text-ink-400">{{ product.benefits }}</div>
+          {% endif %}
+        </dl>
+
+        <div class="mt-auto pt-3">
+          {% if product.sellable %}
+            <a href="{% url 'topups:phone' product.id %}" class="btn btn-primary btn-sm btn-block">
+              Continuar
+            </a>
+          {% else %}
+            <p class="rounded-lg px-2 py-1.5 text-center text-xs font-medium bg-ink-100 text-ink-500">
+              {{ product.unavailable_reason }}
+            </p>
+          {% endif %}
+        </div>
+      </div>
+    {% empty %}
+      <div class="surface surface-pad col-span-full text-center">
+        <p class="font-semibold">No hay productos en esta categoria</p>
+      </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}
