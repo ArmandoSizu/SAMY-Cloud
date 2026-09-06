@@ -2,9 +2,19 @@
 
 Plataforma SaaS multi-tienda para **recargas telefónicas**, **pago de servicios** y **cobros con comisiones configurables**.
 
-> **Estado del proyecto:** en construcción. Ninguna integración con proveedor externo está activa todavía.
-> El sistema **no simula** operaciones: cuando faltan credenciales, el adaptador correspondiente
-> reporta `NOT_CONFIGURED` y **rechaza operar**. Ver [Estado de integraciones](#estado-de-integraciones).
+> **Estado del proyecto:** en desarrollo. **Nada opera en producción.**
+>
+> Conekta y Reloadly están conectados **únicamente en SANDBOX**: los cobros con tarjeta no
+> mueven dinero real y las recargas de prueba **no llegan a ningún teléfono real**. Taecel,
+> que sería el proveedor comercial para México, está **pendiente de contrato** y su adaptador
+> rechaza operar.
+>
+> El sistema **no simula** operaciones. Cuando faltan credenciales o contrato, el adaptador
+> reporta `NOT_CONFIGURED` o `PENDING_CONTRACT` y **se niega a ejecutar**; nunca devuelve un
+> resultado inventado. Ver [Estado de integraciones](#estado-de-integraciones).
+>
+> **Las credenciales no forman parte de este repositorio.** `.env` está en `.gitignore`;
+> `.env.example` solo lleva nombres de variables y marcadores de posición.
 
 ---
 
@@ -110,13 +120,40 @@ Si en el futuro se necesita una app nativa, la API REST versionada ya está ahí
 Investigación verificada (septiembre 2026). Detalle completo en
 [`docs/api-integrations.md`](docs/api-integrations.md).
 
-| Proveedor | Para | Sandbox self-service | Estado |
+| Proveedor | Para | Estado | Ambiente |
 |---|---|---|---|
-| **Conekta** | Cobro con tarjeta | ✅ Sí, hoy mismo | 🔧 Adaptador listo · faltan llaves |
-| **Efectivo en mostrador** | Cobro en efectivo | — no aplica | ✅ **Operativo** |
-| **Reloadly** | Recargas (pruebas) | ✅ Sí, gratis | 🔧 Adaptador listo · faltan llaves |
-| **Taecel** | Recargas (producción MX) | ❌ Requiere contrato | ⏸ Pendiente de contrato |
-| **tapi / Arcus** | CFE, agua | ❌ Requiere contrato | ⏸ Pendiente de contrato |
+| **Conekta** | Cobro con tarjeta | ✅ Conectado y verificado | **SANDBOX** — no mueve dinero real |
+| **Efectivo en mostrador** | Cobro en efectivo | ✅ Operativo | real |
+| **Reloadly** | Recargas (laboratorio) | ✅ Conectado y verificado | **SANDBOX** — no llega a teléfonos reales |
+| **Taecel** | Recargas (comercial MX) | ⏸ Pendiente de contrato | — |
+| **tapi / Arcus** | CFE, agua | ⏸ Pendiente de contrato | — |
+
+### Flujo comprobado de extremo a extremo
+
+Una operación completa, real dentro del sandbox, con evidencia:
+
+```
+Tokenización Conekta → cobro → PAYMENT_PENDING → PAID → order.paid
+  → Topups → Reloadly → fulfillment.result → SUCCESS → comprobante
+```
+
+Ocurrió **una sola vez**: sin doble cobro, sin doble recarga, sin reintentos del
+proveedor, sin órdenes atoradas. El webhook llegó firmado con RSA y se aplicó una vez.
+
+**Ese cobro fue de sandbox y esa recarga no llegó a ningún teléfono.**
+
+### El catálogo comercial no es vendible todavía
+
+Hay 68 productos de Telcel, Movistar, AT&T y Unefon cargados y verificados contra la
+fuente oficial de cada operador (ver [`docs/catalogo-recargas-mexico.md`](docs/catalogo-recargas-mexico.md)).
+**Ninguno se puede cobrar**, porque ningún proveedor configurado sabe ejecutarlos:
+
+```
+oficial_verificado + mapping válido + proveedor disponible + ambiente correcto = vendible
+```
+
+Que un operador venda oficialmente un paquete no significa que nosotros podamos entregarlo.
+La caja lo muestra como "Temporalmente no disponible" en vez de cobrar y averiguarlo después.
 
 **Hallazgos que cambian el plan:**
 
