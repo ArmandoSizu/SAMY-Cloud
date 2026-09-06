@@ -29,6 +29,35 @@
 		header Cache-Control "public, max-age=31536000, immutable"
 	}
 
+	# -------------------------------------------------------------------------
+	# Webhook de Conekta
+	# -------------------------------------------------------------------------
+	# La UNICA ruta de un microservicio alcanzable desde fuera, y es
+	# deliberado: un webhook no sirve de nada si el proveedor no puede
+	# llegar a el.
+	#
+	# Se expone una RUTA, no un puerto: payments sigue sin publicar el suyo
+	# y el resto de su API sigue siendo inalcanzable desde internet.
+	#
+	# Por que se enruta aqui y no con una vista intermedia en el Core: la
+	# firma de Conekta es RSA sobre los BYTES EXACTOS del cuerpo. Un salto
+	# extra que lea y vuelva a serializar el JSON cambiaria esos bytes y la
+	# firma dejaria de validar. Caddy los pasa tal cual.
+	#
+	# La ruta publica es corta a proposito; internamente apunta al endpoint
+	# real, /api/v1/webhooks/conekta/, que ya existia.
+	handle /webhooks/conekta/* {
+		rewrite * /api/v1/webhooks/conekta/
+		reverse_proxy payments:8000 {
+			# payments valida ALLOWED_HOSTS y no conoce el dominio del tunel,
+			# que ademas cambia en cada arranque. Se le presenta un host que
+			# si tiene permitido; el origen real viaja en X-Real-IP.
+			header_up Host localhost
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
 	# Todo lo demas va al Core Platform. Los microservicios NO se exponen:
 	# solo el Core habla con ellos, por la red interna y con peticiones
 	# firmadas.

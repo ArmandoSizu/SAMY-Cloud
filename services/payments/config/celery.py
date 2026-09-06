@@ -51,6 +51,15 @@ app.conf.beat_schedule = {
         "schedule": 120.0,
         "options": {"expires": 110},
     },
+    # Cierra el hueco entre las otras dos barridas: cobros aceptados por el
+    # proveedor cuyo webhook no llego. Es la pata de "consulta" del modelo de
+    # verdad (respuesta inmediata + consulta + webhook firmado), y la unica
+    # que funciona cuando el webhook no puede llegar, como en local.
+    "reconcile-pending-payments": {
+        "task": "apps.orders.tasks.reconcile_pending_payments",
+        "schedule": 120.0,
+        "options": {"expires": 110},
+    },
     "purge-idempotency": {
         "task": "apps.api.tasks.purge_expired_idempotency",
         "schedule": crontab(hour=4, minute=30),

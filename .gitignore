@@ -108,3 +108,6 @@ Claude outputs/
 *.bak
 *.tmp
 .cache/
+
+# URL efimera del tunel de webhooks: cambia en cada arranque.
+.tunel-url
