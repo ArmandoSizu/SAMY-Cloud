@@ -127,6 +127,21 @@ _TELEFONO_MOSTRADOR: Final[str] = "+525500000000"
 
 
 @dataclass(frozen=True, slots=True)
+class _Ambiente:
+    """Resultado de contrastar el ambiente real de Conekta con el configurado.
+
+    ``problema`` vacio significa que todo cuadra. Se devuelve un objeto en vez
+    de levantar porque esto lo consume ``check_health``, cuyo trabajo es
+    *reportar* el estado, no interrumpir.
+    """
+
+    livemode: bool = False
+    estado: ProviderStatus = ProviderStatus.READY
+    problema: str = ""
+    falta: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ConektaConfig:
     private_key: str
     public_key: str = ""
@@ -203,11 +218,94 @@ class ConektaProvider(PaymentProvider):
                 detail=f"Conekta respondio {response.status_code}.",
             )
 
+        latencia = int(response.elapsed.total_seconds() * 1000)
+
+        # Autenticar no basta: hay que saber CONTRA QUE AMBIENTE. Conekta usa
+        # el mismo dominio y el mismo prefijo de llave para pruebas y para
+        # produccion, asi que un READY que no distinga los dos es justo el
+        # aviso que no sirve. Se comprueba ademas que la llave de webhook
+        # configurada sea de verdad una de las de esta cuenta: si no lo es,
+        # todo webhook entrante se rechazara por firma invalida y las ordenes
+        # con tarjeta se quedaran cobradas y sin confirmar.
+        ambiente = self._describir_ambiente()
+        if ambiente.problema:
+            return ProviderHealth(
+                status=ambiente.estado,
+                detail=ambiente.problema,
+                missing_requirements=ambiente.falta,
+                latency_ms=latencia,
+            )
+
         return ProviderHealth(
             status=ProviderStatus.READY,
-            detail=f"Conekta operativo en modo {self.mode}.",
-            latency_ms=int(response.elapsed.total_seconds() * 1000),
+            detail=(
+                f"Conekta operativo en modo {self.mode} "
+                f"(livemode={ambiente.livemode}). Llave de webhook verificada."
+            ),
+            latency_ms=latencia,
         )
+
+    def _describir_ambiente(self) -> "_Ambiente":
+        """Contrasta el ambiente real y la llave de webhook con lo configurado."""
+        try:
+            with self._client() as client:
+                respuesta = client.get("/webhook_keys")
+        except httpx.HTTPError as exc:
+            return _Ambiente(
+                estado=ProviderStatus.DEGRADED,
+                problema=f"No se pudo confirmar el ambiente de Conekta: {exc}",
+            )
+
+        if respuesta.status_code >= 400:
+            return _Ambiente(
+                estado=ProviderStatus.DEGRADED,
+                problema=(
+                    f"Conekta respondio {respuesta.status_code} al consultar las "
+                    "llaves de webhook; no se puede confirmar el ambiente."
+                ),
+            )
+
+        llaves = (self._parse(respuesta).get("data") or []) if respuesta.content else []
+        if not llaves:
+            return _Ambiente(
+                estado=ProviderStatus.NOT_CONFIGURED,
+                problema=(
+                    "La cuenta de Conekta no tiene ninguna llave de webhook. "
+                    "Sin ella no se puede verificar la firma de los webhooks, "
+                    "asi que un cobro con tarjeta nunca quedaria confirmado."
+                ),
+                falta=("Llave de webhook creada en Conekta (POST /webhook_keys)",),
+            )
+
+        esperado_produccion = self.mode == ProviderMode.PRODUCTION
+        modos = {bool(k.get("livemode")) for k in llaves}
+        if modos != {esperado_produccion}:
+            return _Ambiente(
+                estado=ProviderStatus.DEGRADED,
+                problema=(
+                    f"SAMY Cloud esta configurado en modo {self.mode} pero la "
+                    f"cuenta de Conekta reporta livemode={sorted(modos)}. "
+                    "Revisa CONEKTA_PRIVATE_KEY y CONEKTA_MODE antes de cobrar."
+                ),
+            )
+
+        # Comparacion normalizada: dos PEM iguales pueden diferir en saltos de
+        # linea finales segun como se hayan guardado.
+        def _normalizar(pem: str) -> str:
+            return "".join((pem or "").split())
+
+        configurada = _normalizar(self.config.webhook_public_key)
+        if configurada not in {_normalizar(str(k.get("public_key") or "")) for k in llaves}:
+            return _Ambiente(
+                estado=ProviderStatus.DEGRADED,
+                problema=(
+                    "La llave de webhook configurada no coincide con ninguna de "
+                    "las de esta cuenta de Conekta. Los webhooks se rechazarian "
+                    "por firma invalida. Revisa CONEKTA_WEBHOOK_PUBLIC_KEY."
+                ),
+            )
+
+        return _Ambiente(livemode=esperado_produccion)
 
     # -- cobro -------------------------------------------------------------
 

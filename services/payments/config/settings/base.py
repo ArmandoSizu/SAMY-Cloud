@@ -216,7 +216,28 @@ CASH_PAYMENT_ENABLED = env.bool("CASH_PAYMENT_ENABLED", default=True)
 CONEKTA_MODE = env.str("CONEKTA_MODE", default="SANDBOX")
 CONEKTA_PRIVATE_KEY = env.str("CONEKTA_PRIVATE_KEY", default="")
 CONEKTA_PUBLIC_KEY = env.str("CONEKTA_PUBLIC_KEY", default="")
-CONEKTA_WEBHOOK_PUBLIC_KEY = env.str("CONEKTA_WEBHOOK_PUBLIC_KEY", default="")
+
+
+def _pem(valor: str) -> str:
+    """Devuelve un PEM utilizable venga como venga del entorno.
+
+    La llave con la que Conekta firma sus webhooks es un PEM de varias lineas,
+    y ``load_pem_public_key`` exige saltos de linea de verdad. Pero el archivo
+    .env lo lee el parser de ``env_file`` de Docker Compose, que es estricto:
+    una variable por linea. Un PEM pegado tal cual romperia el archivo entero
+    y, con el, el arranque de todos los servicios.
+
+    La solucion es guardarlo en una sola linea con ``\\n`` escapados y
+    devolverlo aqui a su forma real. Se aceptan ambas formas a proposito: si
+    alguien pega el PEM con saltos reales (por ejemplo exportando la variable
+    a mano en su shell), tambien funciona, en vez de fallar con un error de
+    criptografia imposible de relacionar con la causa.
+    """
+    limpio = (valor or "").strip().strip('"').strip("'")
+    return limpio.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\r\n", "\n")
+
+
+CONEKTA_WEBHOOK_PUBLIC_KEY = _pem(env.str("CONEKTA_WEBHOOK_PUBLIC_KEY", default=""))
 
 #: Ventana de tolerancia para webhooks repetidos, en segundos. Un webhook con
 #: el mismo id dentro de esta ventana se ignora sin procesar.
