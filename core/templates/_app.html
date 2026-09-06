@@ -14,8 +14,7 @@
 <div class="min-h-screen lg:flex">
 
   <!-- ================= Barra lateral (escritorio) ================= -->
-  <aside class="hidden lg:flex lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:bg-white no-print"
-         style="border-color: var(--color-ink-200);">
+  <aside class="hidden lg:flex lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:bg-white no-print border-ink-200">
     <div class="flex h-16 items-center px-5">
       <a href="{% url 'dashboard:home' %}" class="flex items-center">
         <img src="{% static 'brand/samy-logo.svg' %}" alt="{{ BRAND_FULL }}" class="h-7 w-auto">
@@ -60,8 +59,7 @@
 
       {% if user.is_platform_admin %}
         <div class="pt-4">
-          <p class="px-3 pb-1 text-2xs font-semibold uppercase tracking-wider"
-             style="color: var(--color-ink-400);">Plataforma</p>
+          <p class="px-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-ink-400">Plataforma</p>
           <a href="{% url 'platform_admin:home' %}"
              class="nav-link {% if '/plataforma/' in request.path %}nav-link-active{% endif %}">
             {% include "_icons.html" with name="shield" %}
@@ -72,14 +70,14 @@
     </nav>
 
     <!-- Tienda activa + usuario -->
-    <div class="border-t px-3 py-3" style="border-color: var(--color-ink-200);">
+    <div class="border-t px-3 py-3 border-ink-200">
       {% if current_store %}
-        <div class="mb-2 rounded-lg px-3 py-2" style="background: var(--color-ink-50);">
-          <p class="text-2xs uppercase tracking-wider" style="color: var(--color-ink-400);">Tienda</p>
+        <div class="mb-2 rounded-lg px-3 py-2 bg-ink-50">
+          <p class="text-2xs uppercase tracking-wider text-ink-400">Tienda</p>
           <p class="truncate text-sm font-medium">{{ current_store.name }}</p>
           {% if can_switch_store %}
             <details class="mt-1.5">
-              <summary class="cursor-pointer text-xs" style="color: var(--color-accent-600);">Cambiar</summary>
+              <summary class="cursor-pointer text-xs text-accent-600">Cambiar</summary>
               <div class="mt-1.5 space-y-1">
                 {% for m in available_memberships %}
                   {% if m.store_id != current_store.id %}
@@ -98,12 +96,11 @@
       {% endif %}
 
       <div class="flex items-center gap-2.5 px-1">
-        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-             style="background: var(--color-accent-100); color: var(--color-accent-700);"
+        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold bg-accent-100 text-accent-700"
              aria-hidden="true">{{ user.initials }}</div>
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-medium">{{ user.full_name }}</p>
-          <p class="truncate text-xs" style="color: var(--color-ink-400);">
+          <p class="truncate text-xs text-ink-400">
             {% if current_membership %}{{ current_membership.get_role_display }}
             {% elif user.is_platform_admin %}Administrador{% endif %}
           </p>
@@ -122,8 +119,7 @@
   <div class="flex min-w-0 flex-1 flex-col">
 
     <!-- Barra superior (celular) -->
-    <header class="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-white px-4 lg:hidden no-print"
-            style="border-color: var(--color-ink-200);">
+    <header class="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-white px-4 lg:hidden no-print border-ink-200">
       <a href="{% url 'dashboard:home' %}">
         <img src="{% static 'brand/samy-logo.svg' %}" alt="{{ BRAND_FULL }}" class="h-6 w-auto">
       </a>
@@ -148,8 +144,7 @@
     {% comment %} La barra inferior crece a cinco columnas cuando el usuario
        administra la tienda. Cinco es el limite: mas iconos en un pulgar dejan
        de ser objetivos tocables. {% endcomment %}
-    <nav class="tabbar no-print"
-         style="grid-template-columns: repeat({% if can_manage_employees %}5{% else %}4{% endif %}, minmax(0, 1fr));"
+    <nav class="tabbar no-print {% if can_manage_employees %}grid-cols-5{% else %}grid-cols-4{% endif %}"
          aria-label="Navegacion">
       <a href="{% url 'dashboard:home' %}"
          class="tabbar-item {% if request.path == url_home %}tabbar-item-active{% endif %}">

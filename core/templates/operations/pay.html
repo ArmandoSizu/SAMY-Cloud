@@ -26,7 +26,7 @@
 
   <!-- Monto: es lo que el cajero le dice al cliente -->
   <div class="surface surface-pad mb-5 text-center">
-    <p class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">Total a cobrar</p>
+    <p class="text-xs uppercase tracking-wider text-ink-400">Total a cobrar</p>
     <p class="mt-1 text-5xl font-semibold tabular tracking-tight">{{ order.total_display }}</p>
     <p class="mt-2 text-sm text-[var(--color-ink-500)]">
       {{ order.base_display }} + {{ order.commission_display }} de comision
@@ -54,8 +54,7 @@
           <div class="surface surface-pad" x-data="{ open: false }">
             <button type="button" @click="open = !open"
                     class="flex w-full items-center gap-3 text-left">
-              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                    style="background: var(--color-success-100); color: var(--color-success-600);">
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success-100 text-success-600">
                 {% include "_icons.html" with name="cash" %}
               </span>
               <span class="flex-1">
@@ -68,7 +67,7 @@
               </svg>
             </button>
 
-            <div x-show="open" x-cloak class="mt-4 border-t pt-4" style="border-color: var(--color-ink-200);">
+            <div x-show="open" x-cloak class="mt-4 border-t pt-4 border-ink-200">
               <div id="cobro-efectivo">
                 {% include "operations/_cash_form.html" %}
               </div>
@@ -81,8 +80,7 @@
              exigiria que el numero pasara por nuestro servidor. {% endcomment %}
           <a href="{% url 'operations:card' order.id %}"
              class="surface surface-pad flex w-full items-center gap-3 text-left transition hover:border-[var(--color-accent-400)]">
-            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                  style="background: var(--color-accent-50); color: var(--color-accent-600);">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
               {% include "_icons.html" with name=method.icon %}
             </span>
             <span class="flex-1">
@@ -98,8 +96,7 @@
         {# Metodo no disponible: se muestra deshabilitado y se explica. #}
         <div class="surface surface-pad opacity-60">
           <div class="flex items-start gap-3">
-            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                  style="background: var(--color-ink-100); color: var(--color-ink-400);">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ink-100 text-ink-400">
               {% include "_icons.html" with name=method.icon %}
             </span>
             <div class="flex-1">

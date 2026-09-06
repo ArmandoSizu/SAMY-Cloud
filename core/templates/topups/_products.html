@@ -6,7 +6,7 @@
 <div id="paso-numero">
   <div class="surface surface-pad mb-4 flex items-center justify-between">
     <div>
-      <p class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">Numero</p>
+      <p class="text-xs uppercase tracking-wider text-ink-400">Numero</p>
       <p class="text-lg font-semibold tabular">{{ phone.pretty }}</p>
     </div>
     <button type="button"
@@ -16,8 +16,7 @@
             hx-push-url="true">Cambiar</button>
   </div>
 
-  <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider"
-      style="color: var(--color-ink-500);">Paso 2 de 3 &middot; Elige el monto</h2>
+  <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-500">Paso 2 de 3 &middot; Elige el monto</h2>
 
   {% if operator.products %}
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -27,7 +26,7 @@
           <input type="hidden" name="product_id" value="{{ product.id }}">
 
           {% if product.is_open_amount %}
-            <div class="action-tile" style="min-height: 6.5rem;">
+            <div class="action-tile min-h-26">
               <label for="amount-{{ product.id }}" class="field-label">{{ product.label }}</label>
               <input type="number"
                      id="amount-{{ product.id }}"
@@ -41,8 +40,7 @@
               <button type="submit" class="btn btn-secondary btn-sm mt-2 w-full">Usar</button>
             </div>
           {% else %}
-            <button type="submit" class="action-tile w-full items-center justify-center text-center"
-                    style="min-height: 6.5rem;">
+            <button type="submit" class="action-tile min-h-26 w-full items-center justify-center text-center">
               <span class="block text-2xl font-semibold tabular">{{ product.amount_display }}</span>
               <span class="mt-1 block text-xs text-[var(--color-ink-500)]">{{ product.label }}</span>
               {% if product.is_data_package %}

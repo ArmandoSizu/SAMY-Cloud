@@ -20,8 +20,8 @@
   </header>
 
   {% if is_stale %}
-    <div class="mb-5 flex items-start gap-2.5 rounded-lg px-4 py-3"
-         style="background: var(--color-warning-100); color: var(--color-warning-600);" role="alert">
+    <div class="mb-5 flex items-start gap-2.5 rounded-lg px-4 py-3 bg-warning-100 text-warning-600"
+         role="alert">
       <span class="mt-0.5">{% include "_icons.html" with name="alert" %}</span>
       <p class="text-sm">
         El catalogo lleva mas de 24 horas sin actualizarse. Es posible que
@@ -31,8 +31,7 @@
   {% endif %}
 
   {% if provider_mode == "SANDBOX" %}
-    <div class="mb-5 flex items-center gap-2.5 rounded-lg px-4 py-2.5"
-         style="background: var(--color-info-100); color: var(--color-info-600);">
+    <div class="mb-5 flex items-center gap-2.5 rounded-lg px-4 py-2.5 bg-info-100 text-info-600">
       <span class="badge badge-info">Sandbox</span>
       <p class="text-sm">
         Estas operando contra el ambiente de PRUEBAS del proveedor.
@@ -45,13 +44,12 @@
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {% for operator in operators %}
         <a href="{% url 'topups:phone' operator.id %}"
-           class="action-tile items-center justify-center text-center"
-           style="min-height: 7rem;">
+           class="action-tile min-h-28 items-center justify-center text-center">
           {% if operator.logo_url %}
             <img src="{{ operator.logo_url }}" alt="" class="mx-auto mb-2 h-9 w-auto object-contain" aria-hidden="true">
           {% else %}
-            <div class="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-xl text-base font-bold"
-                 style="background: var(--color-ink-100); color: var(--color-ink-600);" aria-hidden="true">
+            <div class="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-xl text-base font-bold bg-ink-100 text-ink-600"
+                 aria-hidden="true">
               {{ operator.name|slice:":2"|upper }}
             </div>
           {% endif %}
@@ -72,15 +70,13 @@
         <p class="empty-state-text">{{ reason }}</p>
 
         {% if missing_requirements %}
-          <div class="mt-5 w-full max-w-md rounded-lg px-4 py-3 text-left"
-               style="background: var(--color-ink-50);">
-            <p class="mb-2 text-xs font-semibold uppercase tracking-wider"
-               style="color: var(--color-ink-500);">Falta configurar</p>
+          <div class="mt-5 w-full max-w-md rounded-lg px-4 py-3 text-left bg-ink-50">
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-500">Falta configurar</p>
             <ul class="space-y-1.5">
               {% for item in missing_requirements %}
                 <li class="flex items-start gap-2 text-sm">
-                  <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full"
-                        style="background: var(--color-ink-400);" aria-hidden="true"></span>
+                  <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink-400"
+                        aria-hidden="true"></span>
                   <span>{{ item }}</span>
                 </li>
               {% endfor %}

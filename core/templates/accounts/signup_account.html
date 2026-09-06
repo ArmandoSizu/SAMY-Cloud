@@ -17,8 +17,7 @@
 </p>
 
 {% if rate_limited %}
-  <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
-       style="border-color: var(--color-warning-600); background: var(--color-warning-100); color: var(--color-warning-600);"
+  <div class="mt-6 rounded-lg border px-4 py-3 text-sm border-warning-600 bg-warning-100 text-warning-600"
        role="alert">
     <p class="font-medium">Demasiados intentos</p>
     <p class="mt-1">Espera unos minutos antes de volver a intentarlo.</p>
@@ -26,8 +25,7 @@
 {% endif %}
 
 {% if form.non_field_errors %}
-  <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
-       style="border-color: var(--color-danger-600); background: var(--color-danger-100); color: var(--color-danger-600);"
+  <div class="mt-6 rounded-lg border px-4 py-3 text-sm border-danger-600 bg-danger-100 text-danger-600"
        role="alert">
     {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
   </div>
@@ -93,6 +91,6 @@
 
 <p class="mt-8 text-center text-sm text-[var(--color-ink-500)]">
   &iquest;Ya tienes una cuenta?
-  <a href="{% url 'accounts:login' %}" class="font-medium" style="color: var(--color-accent-600);">Iniciar sesion</a>
+  <a href="{% url 'accounts:login' %}" class="font-medium text-accent-600">Iniciar sesion</a>
 </p>
 {% endblock %}

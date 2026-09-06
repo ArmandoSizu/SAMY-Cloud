@@ -26,21 +26,17 @@
       {% comment %} Indicador de avance: dos pasos, sin sorpresas. {% endcomment %}
       {% if paso %}
         <div class="mb-6 flex items-center gap-2" aria-label="Paso {{ paso }} de 2">
-          <span class="h-1 flex-1 rounded-full"
-                style="background: var(--color-accent-600);"></span>
-          <span class="h-1 flex-1 rounded-full"
-                style="background: {% if paso >= 2 %}var(--color-accent-600){% else %}var(--color-ink-200){% endif %};"></span>
+          <span class="h-1 flex-1 rounded-full bg-accent-600"></span>
+          <span class="h-1 flex-1 rounded-full {% if paso >= 2 %}bg-accent-600{% else %}bg-ink-200{% endif %}"></span>
         </div>
-        <p class="mb-1 text-sm font-semibold uppercase tracking-wider"
-           style="color: var(--color-ink-500);">Paso {{ paso }} de 2</p>
+        <p class="mb-1 text-sm font-semibold uppercase tracking-wider text-ink-500">Paso {{ paso }} de 2</p>
       {% endif %}
 
       {% block signup_content %}{% endblock %}
     </div>
   </div>
 
-  <div class="relative hidden lg:flex lg:flex-col lg:justify-between lg:px-16 lg:py-14"
-       style="background: var(--color-ink-950);">
+  <div class="relative hidden lg:flex lg:flex-col lg:justify-between lg:px-16 lg:py-14 bg-ink-950">
     <div class="flex items-center gap-3">
       <img src="{% static 'brand/samy-mark.svg' %}" alt="" class="h-9 w-9" aria-hidden="true">
       <span class="text-lg font-semibold text-white">SAMY <span class="font-normal text-[var(--color-ink-400)]">Cloud</span></span>

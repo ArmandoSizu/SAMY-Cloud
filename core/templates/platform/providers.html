@@ -23,12 +23,11 @@
 
   {% for service_name, service in services.items %}
     <section class="mb-6">
-      <h2 class="mb-2 text-sm font-semibold uppercase tracking-wider"
-          style="color: var(--color-ink-500);">{{ service_name }}</h2>
+      <h2 class="mb-2 text-sm font-semibold uppercase tracking-wider text-ink-500">{{ service_name }}</h2>
 
       {% if not service.reachable %}
         <div class="surface surface-pad flex items-start gap-3">
-          <span style="color: var(--color-danger-600);">{% include "_icons.html" with name="alert" %}</span>
+          <span class="text-danger-600">{% include "_icons.html" with name="alert" %}</span>
           <div>
             <p class="font-medium">Servicio inaccesible</p>
             <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">{{ service.error }}</p>
@@ -78,14 +77,13 @@
               </div>
 
               {% if provider.missing_requirements %}
-                <div class="mt-4 rounded-lg px-4 py-3" style="background: var(--color-ink-50);">
-                  <p class="mb-2 text-xs font-semibold uppercase tracking-wider"
-                     style="color: var(--color-ink-500);">Falta para habilitarlo</p>
+                <div class="mt-4 rounded-lg px-4 py-3 bg-ink-50">
+                  <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-500">Falta para habilitarlo</p>
                   <ul class="space-y-1.5">
                     {% for item in provider.missing_requirements %}
                       <li class="flex items-start gap-2 text-sm">
-                        <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full"
-                              style="background: var(--color-ink-400);" aria-hidden="true"></span>
+                        <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink-400"
+                              aria-hidden="true"></span>
                         <span>{{ item }}</span>
                       </li>
                     {% endfor %}
@@ -104,8 +102,7 @@
   <div class="surface surface-pad">
     <p class="text-sm text-[var(--color-ink-600)]">
       El detalle de que contratar, con quien y con que requisitos esta en
-      <code class="rounded px-1.5 py-0.5 text-xs"
-            style="background: var(--color-ink-100);">docs/api-integrations.md</code>.
+      <code class="rounded px-1.5 py-0.5 text-xs bg-ink-100">docs/api-integrations.md</code>.
     </p>
   </div>
 </div>

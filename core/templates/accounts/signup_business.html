@@ -16,15 +16,13 @@
   Con esto creamos tu tienda. Podras agregar mas sucursales despues.
 </p>
 
-<p class="mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm"
-   style="background: var(--color-ink-50); color: var(--color-ink-600);">
+<p class="mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm bg-ink-50 text-ink-600">
   {% include "_icons.html" with name="check" %}
   {{ email }}
 </p>
 
 {% if rate_limited %}
-  <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
-       style="border-color: var(--color-warning-600); background: var(--color-warning-100); color: var(--color-warning-600);"
+  <div class="mt-6 rounded-lg border px-4 py-3 text-sm border-warning-600 bg-warning-100 text-warning-600"
        role="alert">
     <p class="font-medium">Demasiados intentos</p>
     <p class="mt-1">Espera unos minutos antes de volver a intentarlo.</p>
@@ -32,8 +30,7 @@
 {% endif %}
 
 {% if form.non_field_errors %}
-  <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
-       style="border-color: var(--color-danger-600); background: var(--color-danger-100); color: var(--color-danger-600);"
+  <div class="mt-6 rounded-lg border px-4 py-3 text-sm border-danger-600 bg-danger-100 text-danger-600"
        role="alert">
     {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
   </div>
@@ -53,8 +50,7 @@
 
   {% include "accounts/_field.html" with field=form.postal_code inputmode="numeric" autocomplete="postal-code" placeholder="28000" %}
 
-  <div class="flex items-start gap-2.5 rounded-lg px-4 py-3"
-       style="background: var(--color-info-100); color: var(--color-info-600);">
+  <div class="flex items-start gap-2.5 rounded-lg px-4 py-3 bg-info-100 text-info-600">
     <span class="mt-0.5">{% include "_icons.html" with name="lock" %}</span>
     <p class="text-sm">
       Tu cuenta se crea como <strong>propietario</strong> del negocio. Desde tu
@@ -68,7 +64,7 @@
 </form>
 
 <p class="mt-4 text-center text-sm">
-  <a href="{% url 'accounts:signup' %}" class="font-medium" style="color: var(--color-ink-500);">
+  <a href="{% url 'accounts:signup' %}" class="font-medium text-ink-500">
     Volver al paso anterior
   </a>
 </p>

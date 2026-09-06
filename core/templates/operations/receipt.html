@@ -19,12 +19,9 @@
 
   <!-- Cambio a devolver: lo primero que necesita el cajero -->
   {% if change_cents %}
-    <div class="mb-5 rounded-xl px-5 py-4 text-center no-print"
-         style="background: var(--color-success-100);">
-      <p class="text-xs font-semibold uppercase tracking-wider"
-         style="color: var(--color-success-600);">Cambio a devolver</p>
-      <p class="mt-1 text-4xl font-semibold tabular tracking-tight"
-         style="color: var(--color-success-600);">{{ change_display }}</p>
+    <div class="mb-5 rounded-xl px-5 py-4 text-center no-print bg-success-100">
+      <p class="text-xs font-semibold uppercase tracking-wider text-success-600">Cambio a devolver</p>
+      <p class="mt-1 text-4xl font-semibold tabular tracking-tight text-success-600">{{ change_display }}</p>
     </div>
   {% endif %}
 

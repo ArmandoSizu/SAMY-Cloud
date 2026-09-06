@@ -474,6 +474,28 @@
 }
 
 /* ==========================================================================
+   Lector de codigo de barras
+   ==========================================================================
+
+   Vive aqui y no en un atributo style porque la CSP de produccion lleva
+   style-src 'self': un style en linea se descarta sin aviso y la ventana de
+   encuadre desaparece, dejando al cajero apuntando la camara a ciegas.
+   ========================================================================== */
+.scanner-stage {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: #000;
+}
+
+/* La "ventana" de encuadre. La sombra gigante es el truco que oscurece todo
+   lo de fuera sin necesidad de cuatro divs alrededor. */
+.scanner-window {
+  width: 78%;
+  height: 34%;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.45);
+}
+
+/* ==========================================================================
    Utilidades
    ========================================================================== */
 @layer utilities {

@@ -34,8 +34,7 @@
      data-debug="{% if debug %}1{% else %}0{% endif %}">
 
   <a href="{% url 'operations:pay' order.id %}"
-     class="mb-5 inline-flex items-center gap-1.5 text-sm font-medium"
-     style="color: var(--color-ink-500);">
+     class="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-ink-500">
     {% include "_icons.html" with name="arrow-left" %}
     Otro metodo de pago
   </a>
@@ -48,25 +47,23 @@
   {# Total, grande: es lo que el cajero le lee al cliente antes de cobrar. #}
   <div class="surface surface-pad mb-4">
     <div class="flex items-baseline justify-between">
-      <span class="text-sm font-semibold uppercase tracking-wider"
-            style="color: var(--color-ink-500);">Total a cobrar</span>
+      <span class="text-sm font-semibold uppercase tracking-wider text-ink-500">Total a cobrar</span>
       <span class="text-3xl font-semibold tabular tracking-tight">{{ order.total_display }}</span>
     </div>
-    <dl class="mt-3 space-y-1 border-t pt-3 text-sm" style="border-color: var(--color-ink-200);">
+    <dl class="mt-3 space-y-1 border-t pt-3 text-sm border-ink-200">
       <div class="flex justify-between">
-        <dt style="color: var(--color-ink-500);">Importe</dt>
+        <dt class="text-ink-500">Importe</dt>
         <dd class="tabular">{{ order.base_display }}</dd>
       </div>
       <div class="flex justify-between">
-        <dt style="color: var(--color-ink-500);">Comision</dt>
+        <dt class="text-ink-500">Comision</dt>
         <dd class="tabular">{{ order.commission_display }}</dd>
       </div>
     </dl>
   </div>
 
   {% if provider_mode == "SANDBOX" %}
-    <div class="mb-4 flex items-center gap-2.5 rounded-lg px-4 py-2.5"
-         style="background: var(--color-warning-100); color: var(--color-warning-600);">
+    <div class="mb-4 flex items-center gap-2.5 rounded-lg px-4 py-2.5 bg-warning-100 text-warning-600">
       <span class="badge badge-warning">Sandbox</span>
       <p class="text-sm">
         Ambiente de PRUEBAS. No se cobra dinero real y ninguna tarjeta
@@ -75,8 +72,7 @@
     </div>
   {% endif %}
 
-  <div class="mb-4 flex items-start gap-2.5 rounded-lg px-4 py-3"
-       style="background: var(--color-info-100); color: var(--color-info-600);">
+  <div class="mb-4 flex items-start gap-2.5 rounded-lg px-4 py-3 bg-info-100 text-info-600">
     <span class="mt-0.5">{% include "_icons.html" with name="lock" %}</span>
     <p class="text-sm">
       Los datos de la tarjeta se capturan directamente en Conekta.
@@ -100,8 +96,7 @@
 
   {# Mientras se cobra: sin boton que volver a pulsar. #}
   <div x-show="procesando" x-cloak class="surface surface-pad text-center">
-    <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full"
-         style="background: var(--color-accent-50); color: var(--color-accent-600);">
+    <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent-600">
       {% include "_icons.html" with name="spinner" %}
     </div>
     <p class="font-semibold">Cobrando...</p>

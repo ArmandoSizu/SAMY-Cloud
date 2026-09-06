@@ -22,7 +22,7 @@
 
   {% if unavailable %}
     <div class="surface surface-pad flex items-start gap-3">
-      <span style="color: var(--color-warning-600);">{% include "_icons.html" with name="alert" %}</span>
+      <span class="text-warning-600">{% include "_icons.html" with name="alert" %}</span>
       <div>
         <p class="font-medium">No pudimos cargar el historial</p>
         <p class="mt-0.5 text-sm text-[var(--color-ink-500)]">
@@ -89,7 +89,7 @@
                 </td>
                 <td class="text-right">
                   <a href="{% url 'operations:receipt' order.id %}"
-                     class="text-sm font-medium" style="color: var(--color-accent-600);">Ver</a>
+                     class="text-sm font-medium text-accent-600">Ver</a>
                 </td>
               </tr>
             {% endfor %}

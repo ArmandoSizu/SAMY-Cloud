@@ -18,8 +18,7 @@
 <div class="mx-auto max-w-lg">
 
   <header class="mb-6">
-    <p class="text-sm font-semibold uppercase tracking-wider"
-       style="color: var(--color-ink-500);">Paso 3 de 3</p>
+    <p class="text-sm font-semibold uppercase tracking-wider text-ink-500">Paso 3 de 3</p>
     <h1 class="mt-1 text-2xl font-semibold tracking-tight">Confirma la recarga</h1>
     <p class="mt-1 text-[var(--color-ink-500)]">Verifica los datos con el cliente antes de cobrar.</p>
   </header>
@@ -27,8 +26,8 @@
   <div class="surface surface-pad">
 
     <!-- Numero: es el dato mas caro de equivocar, asi que domina la pantalla -->
-    <div class="border-b pb-5 text-center" style="border-color: var(--color-ink-200);">
-      <p class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">Recargar a</p>
+    <div class="border-b pb-5 text-center border-ink-200">
+      <p class="text-xs uppercase tracking-wider text-ink-400">Recargar a</p>
       <p class="mt-1 text-3xl font-semibold tabular tracking-tight">{{ phone.pretty }}</p>
       <p class="mt-1.5 text-sm text-[var(--color-ink-500)]">
         {{ operator.name }} &middot; {{ product.label }}
@@ -52,17 +51,14 @@
       </div>
     </dl>
 
-    <div class="flex items-baseline justify-between border-t pt-4"
-         style="border-color: var(--color-ink-200);">
-      <span class="text-sm font-semibold uppercase tracking-wider"
-            style="color: var(--color-ink-500);">Total a cobrar</span>
+    <div class="flex items-baseline justify-between border-t pt-4 border-ink-200">
+      <span class="text-sm font-semibold uppercase tracking-wider text-ink-500">Total a cobrar</span>
       <span class="text-3xl font-semibold tabular tracking-tight">{{ total_display }}</span>
     </div>
   </div>
 
   <!-- Aviso del orden de las cosas -->
-  <div class="mt-4 flex items-start gap-2.5 rounded-lg px-4 py-3"
-       style="background: var(--color-info-100); color: var(--color-info-600);">
+  <div class="mt-4 flex items-start gap-2.5 rounded-lg px-4 py-3 bg-info-100 text-info-600">
     <span class="mt-0.5">{% include "_icons.html" with name="lock" %}</span>
     <p class="text-sm">
       La recarga se envia al operador <strong>solo despues</strong> de que el

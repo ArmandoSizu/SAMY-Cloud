@@ -13,29 +13,27 @@
 {% block content %}
 <div class="mx-auto max-w-lg">
   <div class="surface surface-pad text-center">
-    <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
-         style="background: var(--color-warning-100); color: var(--color-warning-600);">
+    <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-warning-100 text-warning-600">
       {% include "_icons.html" with name="plug" %}
     </div>
 
     <h1 class="text-xl font-semibold">Esta integracion aun no esta activa</h1>
     <p class="mt-2 text-[var(--color-ink-500)]">{{ message }}</p>
 
-    <div class="mt-5 rounded-lg px-4 py-3" style="background: var(--color-success-100);">
-      <p class="text-sm font-medium" style="color: var(--color-success-600);">
+    <div class="mt-5 rounded-lg px-4 py-3 bg-success-100">
+      <p class="text-sm font-medium text-success-600">
         No se realizo ningun cargo. La operacion no avanzo.
       </p>
     </div>
 
     {% if missing_requirements %}
-      <div class="mt-5 rounded-lg px-4 py-3 text-left" style="background: var(--color-ink-50);">
-        <p class="mb-2 text-xs font-semibold uppercase tracking-wider"
-           style="color: var(--color-ink-500);">Falta para habilitarla</p>
+      <div class="mt-5 rounded-lg px-4 py-3 text-left bg-ink-50">
+        <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-500">Falta para habilitarla</p>
         <ul class="space-y-1.5">
           {% for item in missing_requirements %}
             <li class="flex items-start gap-2 text-sm">
-              <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full"
-                    style="background: var(--color-ink-400);" aria-hidden="true"></span>
+              <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink-400"
+                    aria-hidden="true"></span>
               <span>{{ item }}</span>
             </li>
           {% endfor %}

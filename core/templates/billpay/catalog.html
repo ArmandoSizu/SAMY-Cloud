@@ -23,12 +23,12 @@
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {% for biller in billers %}
         <a href="{% url 'billpay:reference' biller.id %}"
-           class="action-tile items-center justify-center text-center" style="min-height: 7.5rem;">
+           class="action-tile min-h-30 items-center justify-center text-center">
           {% if biller.logo_url %}
             <img src="{{ biller.logo_url }}" alt="" class="mx-auto mb-2 h-9 w-auto object-contain" aria-hidden="true">
           {% else %}
-            <div class="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-xl"
-                 style="background: var(--color-ink-100); color: var(--color-ink-600);" aria-hidden="true">
+            <div class="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-ink-100 text-ink-600"
+                 aria-hidden="true">
               {% include "_icons.html" with name="receipt" %}
             </div>
           {% endif %}
@@ -50,8 +50,7 @@
         <p class="empty-state-title">El pago de servicios aun no esta habilitado</p>
         <p class="empty-state-text">{{ reason }}</p>
 
-        <div class="mt-5 w-full max-w-lg rounded-lg px-4 py-3 text-left"
-             style="background: var(--color-ink-50);">
+        <div class="mt-5 w-full max-w-lg rounded-lg px-4 py-3 text-left bg-ink-50">
           <p class="text-sm text-[var(--color-ink-600)]">
             <strong>CFE no tiene API publica</strong> de consulta ni de pago, y los
             organismos de agua tampoco. La unica via legitima es un agregador
@@ -60,15 +59,13 @@
         </div>
 
         {% if missing_requirements %}
-          <div class="mt-3 w-full max-w-lg rounded-lg px-4 py-3 text-left"
-               style="background: var(--color-ink-50);">
-            <p class="mb-2 text-xs font-semibold uppercase tracking-wider"
-               style="color: var(--color-ink-500);">Falta para habilitarlo</p>
+          <div class="mt-3 w-full max-w-lg rounded-lg px-4 py-3 text-left bg-ink-50">
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-500">Falta para habilitarlo</p>
             <ul class="space-y-1.5">
               {% for item in missing_requirements %}
                 <li class="flex items-start gap-2 text-sm">
-                  <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full"
-                        style="background: var(--color-ink-400);" aria-hidden="true"></span>
+                  <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink-400"
+                        aria-hidden="true"></span>
                   <span>{{ item }}</span>
                 </li>
               {% endfor %}

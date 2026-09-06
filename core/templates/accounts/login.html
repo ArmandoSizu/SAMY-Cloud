@@ -28,16 +28,14 @@
       </p>
 
       {% if form.non_field_errors %}
-        <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
-             style="border-color: var(--color-danger-600); background: var(--color-danger-100); color: var(--color-danger-600);"
+        <div class="mt-6 rounded-lg border px-4 py-3 text-sm border-danger-600 bg-danger-100 text-danger-600"
              role="alert">
           {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
         </div>
       {% endif %}
 
       {% if locked_out %}
-        <div class="mt-6 rounded-lg border px-4 py-3 text-sm"
-             style="border-color: var(--color-warning-600); background: var(--color-warning-100); color: var(--color-warning-600);"
+        <div class="mt-6 rounded-lg border px-4 py-3 text-sm border-warning-600 bg-warning-100 text-warning-600"
              role="alert">
           <p class="font-medium">Cuenta bloqueada temporalmente</p>
           <p class="mt-1">Demasiados intentos fallidos. Vuelve a intentar en unos minutos.</p>
@@ -73,7 +71,7 @@
           <div class="mb-1.5 flex items-baseline justify-between">
             <label for="{{ form.password.id_for_label }}" class="field-label mb-0">Contrasena</label>
             <a href="{% url 'accounts:password_reset' %}"
-               class="text-sm font-medium" style="color: var(--color-accent-600);">Olvide mi contrasena</a>
+               class="text-sm font-medium text-accent-600">Olvide mi contrasena</a>
           </div>
           <div x-data="{ show: false }" class="relative">
             <input :type="show ? 'text' : 'password'"
@@ -113,8 +111,7 @@
          alta despues el dueno desde su panel. {% endcomment %}
       <p class="mt-7 text-center text-sm text-[var(--color-ink-500)]">
         &iquest;No tienes una cuenta?
-        <a href="{% url 'accounts:signup' %}" class="font-medium"
-           style="color: var(--color-accent-600);">Crear cuenta</a>
+        <a href="{% url 'accounts:signup' %}" class="font-medium text-accent-600">Crear cuenta</a>
       </p>
 
       <p class="mt-8 text-center text-xs text-[var(--color-ink-400)]">
@@ -124,8 +121,7 @@
   </div>
 
   <!-- Panel de marca: solo escritorio -->
-  <div class="relative hidden lg:flex lg:flex-col lg:justify-between lg:px-16 lg:py-14"
-       style="background: var(--color-ink-950);">
+  <div class="relative hidden lg:flex lg:flex-col lg:justify-between lg:px-16 lg:py-14 bg-ink-950">
     <div>
       <div class="flex items-center gap-3">
         <img src="{% static 'brand/samy-mark.svg' %}" alt="" class="h-9 w-9" aria-hidden="true">
@@ -142,7 +138,7 @@
         Cada operacion queda registrada, conciliada y con comprobante.
       </p>
 
-      <dl class="mt-12 grid grid-cols-3 gap-8 border-t pt-8" style="border-color: rgb(255 255 255 / 0.1);">
+      <dl class="mt-12 grid grid-cols-3 gap-8 border-t border-white/10 pt-8">
         <div>
           <dt class="text-xs uppercase tracking-wider text-[var(--color-ink-500)]">Operacion</dt>
           <dd class="mt-1.5 text-sm text-[var(--color-ink-300)]">Pago confirmado antes de ejecutar</dd>

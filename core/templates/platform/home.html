@@ -18,7 +18,7 @@
     </div>
     <div class="surface surface-pad">
       <p class="stat-label">Microservicios</p>
-      <p class="stat-value" style="color: {% if all_healthy %}var(--color-success-600){% else %}var(--color-danger-600){% endif %};">
+      <p class="stat-value {% if all_healthy %}text-success-600{% else %}text-danger-600{% endif %}">
         {{ services|length }}
       </p>
       <p class="mt-1 text-xs text-[var(--color-ink-500)]">
@@ -28,8 +28,7 @@
   </div>
 
   <section class="mb-6">
-    <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider"
-        style="color: var(--color-ink-500);">Salud de los servicios</h2>
+    <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-500">Salud de los servicios</h2>
     <div class="surface overflow-hidden">
       <div class="table-wrap">
         <table class="table">

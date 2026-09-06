@@ -14,8 +14,7 @@
 {% endcomment %}
 
 {% block signup_content %}
-<div class="flex h-12 w-12 items-center justify-center rounded-full"
-     style="background: var(--color-success-100); color: var(--color-success-600);"
+<div class="flex h-12 w-12 items-center justify-center rounded-full bg-success-100 text-success-600"
      aria-hidden="true">
   {% include "_icons.html" with name="check" %}
 </div>
@@ -25,8 +24,8 @@
   Creamos tu usuario, tu organizacion y tu primera tienda. Entra para empezar.
 </p>
 
-<div class="mt-6 rounded-lg px-4 py-3" style="background: var(--color-ink-50);">
-  <p class="text-xs uppercase tracking-wider" style="color: var(--color-ink-400);">Tu acceso</p>
+<div class="mt-6 rounded-lg px-4 py-3 bg-ink-50">
+  <p class="text-xs uppercase tracking-wider text-ink-400">Tu acceso</p>
   <p class="mt-0.5 font-medium">{{ email }}</p>
 </div>
 
