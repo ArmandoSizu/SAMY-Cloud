@@ -604,11 +604,47 @@ class ConektaProvider(PaymentProvider):
         data_object = (body.get("data") or {}).get("object") or {}
         amount_cents = data_object.get("amount")
 
+        # data.object NO siempre es la orden, y ahi estaba el error.
+        #
+        #   * "order.*"     -> data.object ES la orden. Su id es el ord_... que
+        #     guardamos en el intento de cobro; el estado viene en
+        #     "payment_status".
+        #   * "charge.*"    -> data.object es el CARGO. Su id es un ide de
+        #     cargo, no de orden; el estado viene en "status".
+        #   * "charge.chargeback.*" -> data.object es el CONTRACARGO
+        #     ("object": "chargeback"), con su propio id, su charge_id y un
+        #     "status" de disputa (action_required, under_review, won, lost).
+        #
+        # Lo que tienen en comun los objetos anidados es que todos llevan
+        # "order_id". Esa es la regla, y por eso se busca primero: si el objeto
+        # apunta a una orden, esa es la referencia; si no, el objeto es la
+        # orden. Asi no hay que ir agregando un caso por cada tipo de evento
+        # que Conekta invente.
+        #
+        # Antes se leia "id" siempre, asi que TODO evento que no fuera de orden
+        # terminaba en "orden no encontrada": entraba, se acusaba recibo con un
+        # 200 y no se aplicaba a nada. Silencioso, y justo en la parte que
+        # devuelve dinero.
+        #
+        # Ojo con el desenlace de un contracargo: sus estados son de disputa,
+        # no de pago, asi que _map_outcome los deja en UNKNOWN a proposito. Eso
+        # NO cambia la orden; la manda a conciliacion, que le pregunta a
+        # Conekta cual es el estado real del pago. Es lo correcto: un
+        # contracargo abierto todavia se puede ganar, y dar por perdido el
+        # dinero antes de tiempo seria inventar un desenlace.
+        anidado = bool(data_object.get("order_id"))
+        if anidado:
+            referencia = str(data_object.get("order_id") or "")
+            estado = str(data_object.get("status") or "")
+        else:
+            referencia = str(data_object.get("id") or "")
+            estado = str(data_object.get("payment_status") or "")
+
         return WebhookEvent(
             event_id=str(body.get("id", "")),
             event_type=str(body.get("type", "")),
-            provider_reference=str(data_object.get("id", "")),
-            outcome=self._map_outcome(str(data_object.get("payment_status") or "")),
+            provider_reference=referencia,
+            outcome=self._map_outcome(estado),
             amount=Money(int(amount_cents)) if amount_cents is not None else None,
             raw_payload=self._safe(body),
         )

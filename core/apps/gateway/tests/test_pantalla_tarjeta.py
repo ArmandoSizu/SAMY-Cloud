@@ -248,3 +248,90 @@ class EstilosTokenizadorTests(SimpleTestCase):
             css,
             "El CSS compilado esta desactualizado. Ejecuta: npm run build:css",
         )
+
+
+#: Atributos de evento en linea. La CSP de produccion no lleva
+#: 'unsafe-inline' en script-src, asi que el navegador los ignora en silencio.
+_EVENTOS_EN_LINEA = re.compile(
+    r"\son(click|submit|change|input|load|error|keyup|keydown|focus|blur)\s*=",
+    re.IGNORECASE,
+)
+
+
+class SinJavaScriptEnLineaTests(SimpleTestCase):
+    """Ninguna plantilla puede llevar manejadores de evento en linea.
+
+    Es el mismo fallo del <script> en linea, en su version pequeña y por eso
+    mas facil de colar: ``onclick="window.print()"`` funciona perfectamente en
+    desarrollo, donde la CSP es solo de reporte, y en produccion el navegador
+    lo bloquea sin escribir nada visible. El resultado es un boton que se ve
+    bien, se puede pulsar y no hace absolutamente nada.
+
+    Ya paso una vez, con el boton de imprimir del comprobante. La alternativa
+    correcta es ``@click`` de Alpine, que no es JavaScript en linea para la
+    CSP porque lo evalua la libreria, no el navegador.
+    """
+
+    def test_ninguna_plantilla_usa_manejadores_en_linea(self) -> None:
+        culpables = []
+
+        for plantilla in (RAIZ / "templates").rglob("*.html"):
+            contenido = sin_comentarios(plantilla.read_text(encoding="utf-8"))
+            for coincidencia in _EVENTOS_EN_LINEA.finditer(contenido):
+                linea = contenido[: coincidencia.start()].count("\n") + 1
+                culpables.append(
+                    f"{plantilla.relative_to(RAIZ)}:{linea} -> "
+                    f"{coincidencia.group().strip()}"
+                )
+
+        self.assertEqual(
+            culpables,
+            [],
+            "Manejadores de evento en linea: la CSP de produccion los bloquea "
+            "y el boton queda muerto sin avisar. Usa @click de Alpine.\n  "
+            + "\n  ".join(culpables),
+        )
+
+
+class ComprobanteTests(SimpleTestCase):
+    """El comprobante es lo unico que el cliente se lleva.
+
+    Si le falta un dato, el cliente no tiene con que reclamar. Estas pruebas
+    fijan los campos que no pueden desaparecer de la plantilla.
+    """
+
+    COMPROBANTE = RAIZ / "templates" / "operations" / "receipt.html"
+
+    def setUp(self) -> None:
+        self.contenido = self.COMPROBANTE.read_text(encoding="utf-8")
+
+    def test_lleva_el_desglose_del_dinero(self) -> None:
+        for campo in ("order.base_display", "order.commission_display",
+                      "order.total_display"):
+            with self.subTest(campo=campo):
+                self.assertIn(campo, self.contenido)
+
+    def test_lleva_folio_y_estado(self) -> None:
+        self.assertIn("order.folio", self.contenido)
+        self.assertIn("order.state", self.contenido)
+
+    def test_lleva_el_telefono_enmascarado_y_nunca_el_completo(self) -> None:
+        """El numero se muestra enmascarado: el comprobante se queda en el local."""
+        self.assertIn("fulfillment.phone_masked", self.contenido)
+        self.assertNotIn("fulfillment.phone_e164", self.contenido)
+        self.assertNotIn("fulfillment.phone ", self.contenido)
+
+    def test_lleva_la_referencia_con_la_que_se_reclama(self) -> None:
+        """Sin folio del proveedor el cliente no puede reclamar la recarga."""
+        self.assertIn("fulfillment.operator_reference", self.contenido)
+        self.assertIn("fulfillment.provider_reference", self.contenido)
+
+    def test_avisa_cuando_la_operacion_es_de_prueba(self) -> None:
+        """Un comprobante de sandbox no puede parecer una operacion normal."""
+        self.assertIn("OPERACION DE PRUEBA", self.contenido)
+        self.assertIn('fulfillment.provider_mode == "SANDBOX"', self.contenido)
+
+    def test_no_anuncia_exito_antes_de_tiempo(self) -> None:
+        """Pagada y entregada son cosas distintas y el ticket las distingue."""
+        self.assertIn("PAGADA - EN PROCESO", self.contenido)
+        self.assertIn("COMPLETADA", self.contenido)

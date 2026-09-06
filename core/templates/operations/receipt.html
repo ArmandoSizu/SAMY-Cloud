@@ -141,7 +141,13 @@
 
   <!-- ================= Acciones ================= -->
   <div class="mt-5 flex gap-2 no-print">
-    <button type="button" onclick="window.print()" class="btn btn-secondary flex-1">
+    {% comment %}
+    El "imprimir" va por x-on y NO por onclick. Un onclick es JavaScript en
+    linea: la CSP de produccion no permite 'unsafe-inline' en script-src, asi
+    que el navegador lo bloquearia sin decir nada y el cajero se quedaria con
+    un boton que no hace nada. Alpine ya esta cargado en todas las pantallas.
+    {% endcomment %}
+    <button type="button" x-data @click="window.print()" class="btn btn-secondary flex-1">
       {% include "_icons.html" with name="print" %}
       Imprimir
     </button>

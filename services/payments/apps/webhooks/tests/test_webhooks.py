@@ -294,3 +294,181 @@ class WebhookDuplicadoTests(WebhookBase):
             ).count(),
             1,
         )
+
+
+def _evento_cargo(
+    *,
+    order_id: str,
+    monto_cents: int,
+    event_id: str = "",
+    estado: str = "paid",
+    tipo: str = "charge.paid",
+) -> bytes:
+    """Evento de CARGO: ``data.object`` es el cargo, no la orden.
+
+    La diferencia con ``_evento`` es exactamente la que rompia el manejo: el
+    ``id`` de aqui es un identificador de cargo, la orden viene en
+    ``order_id``, y el estado se llama ``status`` y no ``payment_status``.
+    """
+    return json.dumps(
+        {
+            "id": event_id or f"evt_{uuid.uuid4().hex[:16]}",
+            "object": "event",
+            "type": tipo,
+            "livemode": False,
+            "data": {
+                "object": {
+                    "id": f"chrg_{uuid.uuid4().hex[:16]}",
+                    "object": "charge",
+                    "order_id": order_id,
+                    "status": estado,
+                    "amount": monto_cents,
+                }
+            },
+        }
+    ).encode()
+
+
+def _evento_contracargo(
+    *, order_id: str, monto_cents: int, estado: str = "under_review"
+) -> bytes:
+    """Evento de CONTRACARGO: ``data.object`` es la disputa.
+
+    Tiene su propio ``id``, un ``charge_id`` y un ``status`` que describe la
+    disputa (no el pago). Lo unico que lo ata a nosotros es ``order_id``.
+    """
+    return json.dumps(
+        {
+            "id": f"evt_{uuid.uuid4().hex[:16]}",
+            "object": "event",
+            "type": "charge.chargeback.under_review",
+            "livemode": False,
+            "data": {
+                "object": {
+                    "id": f"dis_{uuid.uuid4().hex[:16]}",
+                    "object": "chargeback",
+                    "charge_id": f"chrg_{uuid.uuid4().hex[:16]}",
+                    "order_id": order_id,
+                    "status": estado,
+                    "amount": monto_cents,
+                }
+            },
+        }
+    ).encode()
+
+
+@override_settings(
+    CONEKTA_PRIVATE_KEY="key_de_prueba",
+    CONEKTA_PUBLIC_KEY="key_publica_de_prueba",
+    CONEKTA_WEBHOOK_PUBLIC_KEY=_LLAVE_PUBLICA_PEM,
+)
+class EventosDeCargoTests(WebhookBase):
+    """Eventos cuyo ``data.object`` NO es la orden.
+
+    Se detecto auditando una recarga real: junto al ``order.paid`` que si se
+    aplico llego un ``charge.paid`` que termino en "orden no encontrada". Ahi
+    no hizo dano porque el otro evento ya habia hecho el trabajo, pero los
+    reembolsos y los contracargos llegan SOLO por esta via. Sin esto, el dia
+    que un cliente reclame su dinero el evento entra, se responde 200 y no se
+    aplica a ninguna orden: un fallo mudo en la parte que devuelve dinero.
+    """
+
+    def test_un_evento_de_cargo_encuentra_su_orden(self) -> None:
+        """La referencia sale de ``order_id``, no del id del cargo."""
+        cuerpo = _evento_cargo(order_id="ord_prueba_123", monto_cents=5300)
+
+        respuesta = self._enviar(cuerpo)
+
+        self.assertEqual(respuesta.status_code, 200)
+        registro = ReceivedWebhook.objects.get()
+        self.assertEqual(registro.provider_reference, "ord_prueba_123")
+        self.assertNotEqual(registro.result, WebhookProcessingResult.ORDER_NOT_FOUND)
+
+    def test_un_evento_de_cargo_lee_status_y_no_payment_status(self) -> None:
+        """El cargo trae ``status``. Leer ``payment_status`` daba vacio.
+
+        Un estado vacio se mapea a UNKNOWN, y UNKNOWN no confirma nada: la
+        orden se habria quedado sin pagar aunque el cargo estuviera cobrado.
+        """
+        cuerpo = _evento_cargo(order_id="ord_prueba_123", monto_cents=5300)
+
+        self._enviar(cuerpo)
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.state, OrderState.PAID)
+
+    def test_un_cargo_rechazado_marca_el_intento_fallido(self) -> None:
+        cuerpo = _evento_cargo(
+            order_id="ord_prueba_123",
+            monto_cents=5300,
+            estado="declined",
+            tipo="charge.declined",
+        )
+
+        self._enviar(cuerpo)
+
+        self.order.refresh_from_db()
+        self.attempt.refresh_from_db()
+        self.assertEqual(self.order.state, OrderState.PAYMENT_PENDING)
+        self.assertEqual(self.attempt.status, PaymentAttemptStatus.DECLINED)
+
+    def test_order_paid_y_charge_paid_juntos_pagan_una_sola_vez(self) -> None:
+        """Conekta manda los dos por el mismo cobro. Uno solo debe surtir efecto.
+
+        Los identificadores de evento son distintos, asi que la deduplicacion
+        no los atrapa: lo que impide el doble pago es que ``confirm_payment``
+        vea la orden ya en PAID. Si esto fallara habria dos ``order.paid`` y,
+        por tanto, dos recargas para un solo cobro.
+        """
+        from apps.outbox.models import OutboxEvent
+
+        self._enviar(_evento(referencia="ord_prueba_123", monto_cents=5300))
+        self._enviar(_evento_cargo(order_id="ord_prueba_123", monto_cents=5300))
+
+        self.assertEqual(ReceivedWebhook.objects.count(), 2)
+        self.assertEqual(
+            OutboxEvent.objects.filter(
+                event_type="order.paid", aggregate_id=self.order.id
+            ).count(),
+            1,
+        )
+
+    def test_un_contracargo_encuentra_su_orden(self) -> None:
+        """El contracargo tampoco es la orden, pero tambien trae ``order_id``."""
+        cuerpo = _evento_contracargo(order_id="ord_prueba_123", monto_cents=5300)
+
+        respuesta = self._enviar(cuerpo)
+
+        self.assertEqual(respuesta.status_code, 200)
+        registro = ReceivedWebhook.objects.get()
+        self.assertEqual(registro.provider_reference, "ord_prueba_123")
+        self.assertNotEqual(registro.result, WebhookProcessingResult.ORDER_NOT_FOUND)
+
+    def test_un_contracargo_abierto_no_decide_el_desenlace(self) -> None:
+        """``under_review`` es estado de disputa, no de pago: queda UNKNOWN.
+
+        Y UNKNOWN no toca la orden a proposito. Un contracargo abierto todavia
+        se puede ganar; darlo por perdido aqui seria inventar un desenlace que
+        el proveedor no ha dado. La conciliacion pregunta y decide.
+        """
+        self.order.state = OrderState.PAID
+        self.order.save(update_fields=["state"])
+
+        self._enviar(_evento_contracargo(order_id="ord_prueba_123", monto_cents=5300))
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.state, OrderState.PAID)
+        registro = ReceivedWebhook.objects.get()
+        self.assertEqual(registro.result, WebhookProcessingResult.IGNORED)
+
+    def test_un_evento_de_orden_sigue_leyendose_como_antes(self) -> None:
+        """Guardia de regresion: arreglar el cargo no debe romper la orden."""
+        cuerpo = _evento(referencia="ord_prueba_123", monto_cents=5300)
+
+        self._enviar(cuerpo)
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.state, OrderState.PAID)
+        self.assertEqual(
+            ReceivedWebhook.objects.get().provider_reference, "ord_prueba_123"
+        )
