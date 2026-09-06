@@ -13,6 +13,7 @@ desarrollo.
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import check_password, identify_hasher
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
@@ -272,13 +273,26 @@ class SignupTests(TestCase):
         self.assertIn(reverse("accounts:login"), respuesta["Location"])
 
     def test_la_contrasena_no_viaja_en_claro_entre_pantallas(self) -> None:
-        """Entre el paso 1 y el 2 la sesion solo guarda el hash."""
+        """Entre el paso 1 y el 2 la sesion solo guarda el hash.
+
+        La comprobacion es sobre la propiedad, no sobre el nombre del
+        algoritmo: la suite corre con un hasher rapido a proposito (ver
+        config/settings/test.py) y afirmar "empieza por argon2" comprobaria
+        la configuracion de las pruebas en vez del comportamiento del
+        registro. Lo que importa es que en la sesion no quede la contrasena
+        en claro y que lo guardado sea un hash valido de esa contrasena.
+        """
         self.client.post(reverse("accounts:signup"), PASO_1)
 
         pendiente = self.client.session["samy_signup_pending"]
         self.assertNotIn("password1", pendiente)
         self.assertNotIn(PASO_1["password1"], str(pendiente))
-        self.assertTrue(pendiente["password_hash"].startswith(("argon2", "pbkdf2")))
+
+        guardado = pendiente["password_hash"]
+        # identify_hasher revienta si el valor no tiene forma de hash Django.
+        self.assertIsNotNone(identify_hasher(guardado))
+        self.assertTrue(check_password(PASO_1["password1"], guardado))
+        self.assertFalse(check_password("otra-cosa-distinta", guardado))
 
     # -- Acceso ----------------------------------------------------------
 

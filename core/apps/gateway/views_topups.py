@@ -252,8 +252,12 @@ def create_order(request: HttpRequest) -> HttpResponse:
     Orden de las llamadas, que importa:
       1. Se registra la recarga en Topups (queda en PENDING_PAYMENT).
       2. Se crea la orden en Payments, apuntando a esa recarga.
-    Si el paso 2 falla, queda una recarga huerfana que nunca se ejecuta
-    (porque nunca habra un order.paid para ella). Es el fallo seguro.
+      3. Se le dice a la recarga cual es su orden.
+
+    Si falla el paso 2 o el 3, queda una recarga huerfana que nunca se
+    ejecuta, porque sin orden no hay forma de verificar el pago y
+    ``execute_topup`` se niega. Es el fallo seguro: lo contrario seria una
+    recarga que se entrega sin haber cobrado.
     """
     draft = request.session.get("topup_draft") or {}
     if not all(k in draft for k in ("product_id", "phone", "amount_cents")):
@@ -300,6 +304,22 @@ def create_order(request: HttpRequest) -> HttpResponse:
             idempotency_key=f"order-{idem}",
         )
         order_data = order.data or {}
+
+        # 3. Se le dice a la recarga cual es su orden.
+        #
+        # La orden ya nacio sabiendo a que recarga corresponde; esto cierra el
+        # circulo en el otro sentido. Es imprescindible: execute_topup exige
+        # una orden para poder comprobar que el pago se confirmo, y sin ella
+        # rechaza ejecutar. Una recarga sin enlace se cobraria y no se
+        # entregaria nunca.
+        topups_client().post(
+            f"/api/v1/topups/{fulfillment_data.get('id')}/orden/",
+            payload={
+                "order_id": order_data.get("id"),
+                "store_id": str(store.id),
+            },
+            idempotency_key=f"link-{idem}",
+        )
     except ProviderNotConfigured as exc:
         audit.record(
             request,

@@ -194,6 +194,14 @@ class CatalogSyncRun(models.Model):
     succeeded = models.BooleanField(default=False)
 
     operators_found = models.PositiveIntegerField(default=0)
+    #: Operadores que el proveedor devolvio pero que NO se pueden vender.
+    #:
+    #: El caso real: operadores que solo publican precio en la moneda del
+    #: monedero (USD) y no en pesos. Ponerles precio exigiria aplicar nuestro
+    #: propio tipo de cambio, es decir inventar un precio. Se descartan, pero
+    #: el numero queda a la vista: si el catalogo trae menos companias de las
+    #: esperadas, aqui esta la explicacion en vez de un misterio.
+    operators_skipped = models.PositiveIntegerField(default=0)
     products_found = models.PositiveIntegerField(default=0)
     products_created = models.PositiveIntegerField(default=0)
     products_updated = models.PositiveIntegerField(default=0)

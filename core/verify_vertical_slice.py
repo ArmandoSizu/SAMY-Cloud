@@ -253,8 +253,32 @@ except ProviderError:
     check("otra tienda no puede ver la orden", True)
 
 # ---------------------------------------------------------------------------
-section("8. PROVEEDORES  (sin credenciales NO operan)")
+section("8. PROVEEDORES  (el estado declarado coincide con lo que hay)")
 # ---------------------------------------------------------------------------
+
+# Estas comprobaciones valen TANTO con credenciales como sin ellas. El invariante
+# no es "todo esta apagado" (eso solo describe el dia uno), sino que ningun
+# adaptador pueda mentir sobre si mismo:
+#
+#   READY  <=>  no le falta ningun requisito
+#
+# Un adaptador READY con requisitos pendientes estaria afirmando que opera sin
+# tener con que. Un adaptador no-READY sin decir que le falta dejaria al dueno
+# sin saber que hacer. Ambos casos son fallas.
+
+
+def _coherente(p: dict) -> bool:
+    falta = bool(p.get("missing_requirements"))
+    return (p["status"] == "READY") is not falta
+
+
+def _incoherentes(lista: list[dict]) -> str:
+    return ", ".join(
+        f"{p['slug']}={p['status']}(falta:{len(p.get('missing_requirements') or [])})"
+        for p in lista
+        if not _coherente(p)
+    )
+
 
 providers = payments.get("/api/v1/providers/").data["providers"]
 for p in providers:
@@ -263,15 +287,19 @@ for p in providers:
 cash = next((p for p in providers if p["slug"] == "cash"), None)
 conekta = next((p for p in providers if p["slug"] == "conekta"), None)
 
-check("efectivo esta OPERATIVO", cash and cash["status"] == "READY")
+check("efectivo esta OPERATIVO", bool(cash) and cash["status"] == "READY")
 check(
-    "Conekta reporta NOT_CONFIGURED (no simula)",
-    conekta and conekta["status"] == "NOT_CONFIGURED",
-    conekta["status"] if conekta else "ausente",
+    "ningun proveedor de pagos se declara operativo sin llaves",
+    all(_coherente(p) for p in providers),
+    _incoherentes(providers),
 )
 check(
-    "Conekta dice exactamente que le falta",
-    bool(conekta and conekta.get("missing_requirements")),
+    "Conekta declara su estado y, si no opera, dice que le falta",
+    bool(conekta)
+    and (
+        conekta["status"] == "READY" or bool(conekta.get("missing_requirements"))
+    ),
+    conekta["status"] if conekta else "ausente",
 )
 
 topup_providers = topups.get("/api/v1/providers/").data["providers"]
@@ -279,17 +307,92 @@ for p in topup_providers:
     print(f"  {p['display_name']:<22} {p['status']}")
 check(
     "ningun proveedor de recargas se declara operativo sin llaves",
-    all(p["status"] != "READY" for p in topup_providers),
+    all(_coherente(p) for p in topup_providers),
+    _incoherentes(topup_providers),
 )
+recargas_operativas = [p["slug"] for p in topup_providers if p["status"] == "READY"]
 
 # ---------------------------------------------------------------------------
-section("9. CATALOGO  (vacio y explicado, no inventado)")
+section("9. CATALOGO  (solo lo que el proveedor devuelve de verdad)")
 # ---------------------------------------------------------------------------
 
 catalog = topups.get("/api/v1/catalog/").data
-check("el catalogo NO ofrece operadores falsos", catalog.get("available") is False)
-check("explica por que esta vacio", bool(catalog.get("reason")))
-print(f"  Motivo: {catalog.get('reason', '')[:100]}")
+disponible = catalog.get("available") is True
+
+if not disponible:
+    # Sin proveedor operativo el catalogo tiene que estar vacio Y explicado.
+    check("sin proveedor operativo el catalogo no inventa nada", not recargas_operativas)
+    check("el catalogo NO ofrece operadores falsos", not catalog.get("operators"))
+    check("explica por que esta vacio", bool(catalog.get("reason")))
+    print(f"  Motivo: {catalog.get('reason', '')[:100]}")
+else:
+    # Con proveedor operativo el catalogo tiene contenido, pero sigue sin poder
+    # contener nada que el proveedor no haya devuelto: todo producto tiene que
+    # venir en MXN y con un monto utilizable.
+    operadores = catalog.get("operators") or []
+    check(
+        "el catalogo solo se llena si hay un proveedor operativo",
+        bool(recargas_operativas),
+        "catalogo con datos y ningun proveedor READY",
+    )
+    check("hay operadores sincronizados", bool(operadores), "lista vacia")
+
+    malas_monedas = sorted(
+        {
+            prod.get("currency")
+            for op in operadores
+            for prod in op.get("products") or []
+            if prod.get("currency") != "MXN"
+        }
+    )
+    check(
+        "todo producto se vende en MXN",
+        not malas_monedas,
+        f"monedas ajenas: {malas_monedas}",
+    )
+
+    def _monto_invalido(prod: dict) -> bool:
+        cents = prod.get("amount_cents")
+        if cents is None:
+            # Monto libre: solo es vendible si el proveedor dio el rango.
+            return not (prod.get("min_amount_cents") and prod.get("max_amount_cents"))
+        return cents <= 0
+
+    montos_invalidos = [
+        f"{op['name']}/{prod['label']}"
+        for op in operadores
+        for prod in op.get("products") or []
+        if _monto_invalido(prod)
+    ]
+    check(
+        "ningun producto tiene monto vacio o cero",
+        not montos_invalidos,
+        ", ".join(montos_invalidos[:5]),
+    )
+
+    sin_productos = [op["name"] for op in operadores if not op.get("products")]
+    check(
+        "ningun operador se muestra sin productos que vender",
+        not sin_productos,
+        ", ".join(sin_productos),
+    )
+    check(
+        "el catalogo dice cuando se sincronizo",
+        bool(catalog.get("last_synced_at")),
+    )
+    check(
+        "el catalogo se sincronizo contra un SANDBOX",
+        str(catalog.get("provider_mode") or "").upper() == "SANDBOX",
+        f"modo reportado: {catalog.get('provider_mode')!r}",
+    )
+    total_productos = sum(len(op.get("products") or []) for op in operadores)
+    print(
+        f"  {len(operadores)} operadores / {total_productos} productos"
+        f"  |  proveedor: {', '.join(recargas_operativas)}"
+        f"  |  modo: {catalog.get('provider_mode')}"
+    )
+    for op in operadores:
+        print(f"    - {op['name']:<28} {len(op.get('products') or [])} productos")
 
 # ---------------------------------------------------------------------------
 section("RESULTADO")

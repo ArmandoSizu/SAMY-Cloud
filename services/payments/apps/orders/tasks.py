@@ -12,6 +12,13 @@ from celery import shared_task
 from django.utils import timezone
 
 from apps.orders import services
+
+# Celery autodescubre unicamente ``tasks.py`` de cada app. El consumidor de
+# resultados de entrega vive en ``consumers.py`` porque no es una tarea de
+# mantenimiento sino la otra mitad del ciclo de la orden; se importa aqui para
+# que quede registrado. Sin esta linea la tarea no existe para el worker y las
+# ordenes se quedan en PAID.
+from apps.orders.consumers import consume_fulfillment_events  # noqa: F401
 from apps.orders.models import Order
 from apps.payments.models import PaymentAttempt, PaymentAttemptStatus
 from apps.providers.base import PaymentOutcome

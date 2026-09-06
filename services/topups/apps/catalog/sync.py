@@ -53,6 +53,9 @@ def sync_catalog(provider_slug: str | None = None) -> CatalogSyncRun:
 
     try:
         products = provider.fetch_catalog()
+        # Cuantos operadores devolvio el proveedor frente a cuantos se pueden
+        # vender de verdad. La diferencia son operadores sin precio en pesos.
+        operadores_del_proveedor = getattr(provider, "last_operator_count", 0)
     except ProviderError as exc:
         run.finished_at = timezone.now()
         run.succeeded = False
@@ -97,6 +100,9 @@ def sync_catalog(provider_slug: str | None = None) -> CatalogSyncRun:
         run.finished_at = timezone.now()
         run.succeeded = True
         run.operators_found = len(operators_seen)
+        run.operators_skipped = max(
+            0, operadores_del_proveedor - len(operators_seen)
+        )
         run.products_found = len(products)
         run.products_created = created
         run.products_updated = updated

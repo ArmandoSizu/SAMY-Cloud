@@ -59,8 +59,24 @@ class Event:
 
     @classmethod
     def from_wire(cls, data: dict[str, Any]) -> "Event":
+        """Reconstruye el evento desde los campos planos de Redis.
+
+        ``XREADGROUP`` devuelve un diccionario con claves **y** valores en
+        bytes cuando el cliente no esta configurado con ``decode_responses``.
+        Buscar ``"occurred_at"`` en un diccionario cuya clave es
+        ``b"occurred_at"`` no encuentra nada, y el evento se reconstruia con
+        todos los campos vacios: el sintoma era
+        ``Invalid isoformat string: ''`` y, en consecuencia, ninguna orden
+        pagada llegaba nunca a ejecutarse. Por eso las claves se normalizan
+        antes de leerlas, y no solo los valores.
+        """
+        normalizado = {
+            (k.decode() if isinstance(k, bytes) else str(k)): v
+            for k, v in data.items()
+        }
+
         def _s(key: str) -> str:
-            value = data.get(key, "")
+            value = normalizado.get(key, "")
             return value.decode() if isinstance(value, bytes) else str(value)
 
         return cls(

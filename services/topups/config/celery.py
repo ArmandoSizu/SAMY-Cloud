@@ -46,4 +46,13 @@ app.conf.beat_schedule = {
         "schedule": 120.0,
         "options": {"expires": 110},
     },
+    # Red de seguridad del dinero: si un order.paid se pierde (evento
+    # ilegible, worker caido al reiniciar, cola equivocada), la recarga se
+    # queda cobrada y sin entregar. Esta barrida la rescata preguntando el
+    # estado real de la orden a Pagos, sin confiar en ningun evento.
+    "recover-paid-without-execution": {
+        "task": "apps.fulfillment.tasks.recover_paid_without_execution",
+        "schedule": 60.0,
+        "options": {"expires": 55},
+    },
 }

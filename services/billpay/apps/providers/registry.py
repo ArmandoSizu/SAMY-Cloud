@@ -57,11 +57,16 @@ def describe_all() -> list[dict[str, object]]:
     for meta in biller_registry.describe_all():
         entry = dict(meta)
         try:
-            health = get_provider(str(meta["slug"])).check_health()
+            provider = get_provider(str(meta["slug"]))
+            health = provider.check_health()
+            # Ver la nota en el registro de recargas: un [OK] sin decir contra
+            # que ambiente opera no sirve para lo que hay que vigilar.
+            entry["mode"] = str(provider.mode)
             entry["status"] = str(health.status)
             entry["detail"] = health.detail
             entry["missing_requirements"] = list(health.missing_requirements)
         except Exception as exc:  # noqa: BLE001
+            entry["mode"] = ""
             entry["status"] = "ERROR"
             entry["detail"] = str(exc)[:300]
             entry["missing_requirements"] = []

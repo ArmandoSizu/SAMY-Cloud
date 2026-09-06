@@ -70,6 +70,15 @@
           <div class="receipt-row">
             <span>Folio operador</span><span class="font-bold">{{ fulfillment.operator_reference }}</span>
           </div>
+        {% elif fulfillment.provider_reference %}
+          {% comment %}
+          Muchos operadores no devuelven folio propio. El del proveedor si
+          existe siempre que la recarga se envio, y es el numero con el que se
+          reclama: sin el, el cliente no tiene con que reclamar nada.
+          {% endcomment %}
+          <div class="receipt-row">
+            <span>Folio proveedor</span><span class="font-bold">{{ fulfillment.provider_reference }}</span>
+          </div>
         {% endif %}
         {% if fulfillment.biller_reference %}
           <div class="receipt-row">
@@ -108,10 +117,20 @@
         <div class="receipt-row"><span>Pago</span><span>{{ order.payment_method }}</span></div>
       {% endif %}
 
-      {% if order.provider_mode == "SANDBOX" %}
+      {% comment %}
+      El aviso de prueba tiene que mirar AMBOS lados. El cobro puede ser real
+      (efectivo en el mostrador siempre lo es) mientras el servicio se ejecuta
+      contra un sandbox: ese comprobante no puede parecer una operacion
+      normal, porque el saldo no llego a ningun telefono. Mirar solo el modo
+      del cobro dejaba justo ese caso sin aviso.
+      {% endcomment %}
+      {% if order.provider_mode == "SANDBOX" or fulfillment.provider_mode == "SANDBOX" %}
         <div class="receipt-rule"></div>
         <p class="text-center text-xs font-bold">*** OPERACION DE PRUEBA ***</p>
         <p class="text-center text-xs">Ambiente sandbox. Sin valor real.</p>
+        {% if fulfillment.provider_mode == "SANDBOX" %}
+          <p class="text-center text-xs">El saldo NO llego a un telefono real.</p>
+        {% endif %}
       {% endif %}
 
       <div class="receipt-rule"></div>

@@ -22,6 +22,17 @@ class CreateTopupSerializer(serializers.Serializer):
     amount_cents = serializers.IntegerField(required=False, min_value=1)
 
 
+class LinkOrderSerializer(serializers.Serializer):
+    """Datos para atar una recarga a la orden que la cobra.
+
+    ``store_id`` no es decorativo: es lo que impide que una tienda enlace su
+    orden a la recarga de otra.
+    """
+
+    order_id = serializers.UUIDField()
+    store_id = serializers.UUIDField()
+
+
 class TopupFulfillmentSerializer(serializers.ModelSerializer):
     amount_display = serializers.SerializerMethodField()
 
@@ -42,6 +53,12 @@ class TopupFulfillmentSerializer(serializers.ModelSerializer):
             "state_reason",
             "provider_slug",
             "provider_mode",
+            # El folio del PROVEEDOR (Reloadly, Taecel...). Es el numero que
+            # existe siempre que la recarga se envio, a diferencia del folio
+            # del operador telefonico, que muchos no devuelven. Es el dato con
+            # el que se reclama una recarga, asi que tiene que llegar al
+            # comprobante.
+            "provider_reference",
             "operator_reference",
             "failure_reason",
             "created_at",

@@ -79,6 +79,16 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_TIME_LIMIT = 300
 CELERY_TIMEZONE = "America/Mexico_City"
 
+#: Cola propia por servicio. NO es un detalle cosmetico.
+#:
+#: Los tres microservicios comparten el mismo Redis como broker. Con la cola
+#: por defecto de Celery ("celery"), las tareas periodicas de un servicio
+#: caian en el worker de otro, que no las tiene registradas y las **descarta**
+#: con "Received unregistered task". El efecto observado: ordenes pagadas cuya
+#: recarga no se ejecutaba nunca, de forma intermitente y sin error visible al
+#: cajero. Cada worker consume unicamente su cola (ver -Q en docker-compose).
+CELERY_TASK_DEFAULT_QUEUE = f"samy.{SERVICE_NAME}"
+
 EVENT_STREAM_URL = env.str("EVENT_STREAM_URL", default="redis://localhost:6379/3")
 EVENT_STREAM_NAME = "samy:events:topups"
 #: Stream del que se consumen los eventos de pago.

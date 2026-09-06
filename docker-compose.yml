@@ -163,7 +163,12 @@ services:
       - ./libs/samy_common:/libs/samy_common:cached
     # El worker drena el outbox, procesa webhooks diferidos, expira ordenes
     # y concilia operaciones en estado indeterminado.
-    command: celery -A config.celery worker --beat --loglevel=info --concurrency=2
+    #
+    # -Q samy.payments: cada servicio consume SOLO su cola. Los tres comparten
+    # el mismo Redis; con la cola por omision de Celery este worker recibia
+    # tareas de recargas, no las tenia registradas y las descartaba, dejando
+    # ordenes pagadas sin ejecutar.
+    command: celery -A config.celery worker --beat --loglevel=info --concurrency=2 -Q samy.payments
     # El HEALTHCHECK de la imagen hace curl a :8000; un worker no sirve
     # HTTP. Se sustituye por el ping de control de Celery, que si dice
     # si el worker esta vivo y consumiendo.
@@ -219,7 +224,9 @@ services:
     volumes:
       - ./services/topups:/app:cached
       - ./libs/samy_common:/libs/samy_common:cached
-    command: celery -A config.celery worker --beat --loglevel=info --concurrency=2
+    # -Q samy.topups: ver la nota en payments-worker. Sin cola propia, este
+    # worker perdia sus propias tareas periodicas a manos de otro servicio.
+    command: celery -A config.celery worker --beat --loglevel=info --concurrency=2 -Q samy.topups
     # El HEALTHCHECK de la imagen hace curl a :8000; un worker no sirve
     # HTTP. Se sustituye por el ping de control de Celery, que si dice
     # si el worker esta vivo y consumiendo.
@@ -275,7 +282,8 @@ services:
     volumes:
       - ./services/billpay:/app:cached
       - ./libs/samy_common:/libs/samy_common:cached
-    command: celery -A config.celery worker --beat --loglevel=info --concurrency=2
+    # -Q samy.billpay: ver la nota en payments-worker.
+    command: celery -A config.celery worker --beat --loglevel=info --concurrency=2 -Q samy.billpay
     # El HEALTHCHECK de la imagen hace curl a :8000; un worker no sirve
     # HTTP. Se sustituye por el ping de control de Celery, que si dice
     # si el worker esta vivo y consumiendo.

@@ -61,11 +61,18 @@ def describe_all() -> list[dict[str, object]]:
     for meta in topup_registry.describe_all():
         entry = dict(meta)
         try:
-            health = get_provider(str(meta["slug"])).check_health()
+            provider = get_provider(str(meta["slug"]))
+            health = provider.check_health()
+            # El modo es la respuesta a "estoy pegado al sandbox o a
+            # produccion?". Sin el, el panel muestra un [OK] que no dice
+            # contra que ambiente esta operando, que es justo lo que hay que
+            # poder distinguir de un vistazo.
+            entry["mode"] = str(provider.mode)
             entry["status"] = str(health.status)
             entry["detail"] = health.detail
             entry["missing_requirements"] = list(health.missing_requirements)
         except Exception as exc:  # noqa: BLE001
+            entry["mode"] = ""
             entry["status"] = "ERROR"
             entry["detail"] = str(exc)[:300]
             entry["missing_requirements"] = []

@@ -32,6 +32,12 @@ log = structlog.get_logger("fulfillment.tasks")
 #: sin bloquear el worker demasiado tiempo en una sola tarea.
 BATCH_SIZE = 20
 
+#: Cuanto tiempo hacia atras vigila la barrida de rescate. Pasada esa ventana,
+#: una recarga sin ejecutar ya no es "un evento que se perdio hace un momento"
+#: sino un caso que necesita revision humana, y reintentarlo cada minuto solo
+#: gasta llamadas al servicio de Pagos.
+VENTANA_RESCATE_HORAS = 24
+
 
 @shared_task(name="apps.fulfillment.tasks.consume_payment_events")
 def consume_payment_events() -> dict[str, int]:
@@ -162,6 +168,61 @@ def execute_topup_task(self, fulfillment_id: str) -> dict[str, str]:
         return {"status": "failed", "reason": exc.message}
 
     return {"status": result.state}
+
+
+@shared_task(name="apps.fulfillment.tasks.recover_paid_without_execution")
+def recover_paid_without_execution(batch_size: int = 50) -> dict[str, int]:
+    """Rescata recargas cobradas que nunca llegaron a ejecutarse.
+
+    Por que existe: ``consume_payment_events`` confirma (XACK) los mensajes
+    que no puede interpretar, para que un solo mensaje corrupto no atasque la
+    cola entera. El precio de esa decision es que ese ``order.paid`` se pierde
+    para siempre, y la recarga se queda en PENDING_PAYMENT con el dinero ya
+    cobrado. Eso ocurrio de verdad: un fallo al deserializar el evento dejo
+    una orden pagada sin entregar y sin ninguna alarma.
+
+    Un evento perdido no puede ser la ultima palabra cuando ya se cobro. Esta
+    barrida no confia en ningun evento: pregunta al servicio de Pagos por el
+    estado REAL de la orden (lo hace ``execute_topup``) y solo entonces
+    ejecuta. Si la orden no esta pagada, no pasa nada; si lo esta, el cliente
+    recibe lo que compro aunque el bus haya fallado.
+    """
+    ahora = timezone.now()
+    # Margen inferior para no pisar el camino normal: si el evento llego bien,
+    # la recarga ya salio de PENDING_PAYMENT mucho antes de este minuto.
+    reciente = ahora - timezone.timedelta(minutes=1)
+    # Margen superior. Sin el, una orden que nunca se pago se reencola cada
+    # minuto para siempre y cada intento cuesta una llamada a Pagos. La red de
+    # seguridad es para un evento perdido, no para vigilar indefinidamente
+    # ordenes que el cliente abandono: esas las cierra la expiracion de
+    # ordenes en Pagos.
+    ventana = ahora - timezone.timedelta(hours=VENTANA_RESCATE_HORAS)
+
+    atascadas = (
+        TopupFulfillment.objects.filter(
+            state__in=[FulfillmentState.PENDING_PAYMENT, FulfillmentState.QUEUED],
+            updated_at__lte=reciente,
+            updated_at__gte=ventana,
+        )
+        .exclude(order_id=None)
+        .order_by("created_at")[:batch_size]
+    )
+
+    reencoladas = 0
+    for fulfillment in atascadas:
+        log.warning(
+            "topup_pagada_sin_ejecutar_reencolada",
+            fulfillment_id=str(fulfillment.id),
+            order_id=str(fulfillment.order_id),
+            state=fulfillment.state,
+            minutos_atascada=int(
+                (timezone.now() - fulfillment.updated_at).total_seconds() // 60
+            ),
+        )
+        execute_topup_task.delay(str(fulfillment.id))
+        reencoladas += 1
+
+    return {"reencoladas": reencoladas}
 
 
 @shared_task(name="apps.fulfillment.tasks.reconcile_pending_topups")

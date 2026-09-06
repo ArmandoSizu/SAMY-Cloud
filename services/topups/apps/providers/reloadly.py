@@ -221,6 +221,10 @@ class ReloadlyProvider(TopupProvider):
 
         products: list[CatalogProduct] = []
         page = 0
+        #: Operadores que devolvio el proveedor, vendibles o no. La diferencia
+        #: con los que acaban en el catalogo es exactamente el numero de
+        #: operadores que no publican precio en pesos.
+        self.last_operator_count = 0
 
         while True:
             with self._client() as client:
@@ -244,13 +248,18 @@ class ReloadlyProvider(TopupProvider):
                 break
 
             for operator in operators:
+                self.last_operator_count += 1
                 products.extend(self._parse_operator(operator))
 
             if isinstance(payload, list) or payload.get("last", True):
                 break
             page += 1
 
-        log.info("reloadly_catalog_fetched", products=len(products))
+        log.info(
+            "reloadly_catalog_fetched",
+            products=len(products),
+            operadores_devueltos=self.last_operator_count,
+        )
         return products
 
     def _parse_operator(self, operator: dict[str, Any]) -> list[CatalogProduct]:
@@ -275,6 +284,26 @@ class ReloadlyProvider(TopupProvider):
 
         amounts = operator.get("localFixedAmounts") or []
         descriptions = operator.get("localFixedAmountsDescriptions") or {}
+
+        # Hay operadores que solo publican precios en la moneda del monedero
+        # (los llamados "... USD" en el catalogo de Reloadly). Para un
+        # mostrador que cobra pesos son invendibles: ponerles precio exigiria
+        # aplicar NUESTRO tipo de cambio, y eso seria inventar un precio que
+        # el proveedor no ofrece. Se descartan, pero dejando constancia: un
+        # operador que desaparece sin explicacion es un misterio para quien
+        # revise el catalogo manana.
+        if not amounts and operator.get("localMinAmount") is None:
+            log.info(
+                "reloadly_operador_sin_precio_local",
+                operator=operator_id,
+                name=name,
+                moneda_monedero=operator.get("senderCurrencyCode"),
+                moneda_destino=operator.get("destinationCurrencyCode"),
+                denominaciones_en_moneda_del_monedero=len(
+                    operator.get("fixedAmounts") or []
+                ),
+            )
+            return []
 
         for raw_amount in amounts:
             try:

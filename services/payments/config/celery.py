@@ -26,6 +26,14 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
 app.conf.beat_schedule = {
+    # Cierra la cadena PAID -> PROCESSING -> SUCCESS leyendo los resultados
+    # que publican los servicios ejecutores. Sin esta tarea la orden se queda
+    # en PAID aunque la recarga ya se haya entregado.
+    "consume-fulfillment-events": {
+        "task": "apps.orders.consumers.consume_fulfillment_events",
+        "schedule": 5.0,
+        "options": {"expires": 20},
+    },
     "drain-outbox": {
         "task": "apps.outbox.tasks.drain_outbox",
         "schedule": 5.0,
