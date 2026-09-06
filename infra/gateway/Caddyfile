@@ -23,10 +23,25 @@
 	encode zstd gzip
 
 	# Archivos estaticos servidos directamente por Caddy.
+	#
+	# OJO CON LA CACHE. Este archivo es el de DESARROLLO, y aqui los nombres
+	# NO llevan hash: config/settings/dev.py usa StaticFilesStorage a
+	# proposito, para no tener que recolectar en cada cambio.
+	#
+	# Con nombres sin hash, "max-age=31536000, immutable" es una trampa:
+	# 'immutable' le dice al navegador que NO revalide nunca, ni siquiera al
+	# recargar. El resultado es que un cambio en app.css o en cualquier .js
+	# es INVISIBLE durante un ano para cualquier navegador que ya haya
+	# visitado la pagina. Costo horas de depuracion: el servidor entregaba el
+	# archivo corregido y la pantalla seguia ejecutando el viejo.
+	#
+	# En produccion el header largo si corresponde, porque alli
+	# ManifestStaticFilesStorage mete un hash en el nombre y cada cambio
+	# produce una URL distinta.
 	handle_path /static/* {
 		root * /srv/static
 		file_server
-		header Cache-Control "public, max-age=31536000, immutable"
+		header Cache-Control "no-cache"
 	}
 
 	# -------------------------------------------------------------------------
