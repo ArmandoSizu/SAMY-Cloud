@@ -26,3 +26,9 @@ LOG_JSON = False
 LOG_LEVEL = "WARNING"
 
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+# Ambiente de PRUEBAS. Es lo que impide que la suite opere contra produccion:
+# con este valor, un proveedor en modo PRODUCTION es rechazado por
+# ensure_ready() antes de autenticarse, y ninguna prueba puede gastar saldo
+# real ni mandar una recarga a un telefono real.
+ENVIRONMENT = "test"

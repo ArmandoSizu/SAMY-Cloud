@@ -16,6 +16,22 @@ env = environ.Env()
 SERVICE_NAME = "topups"
 SERVICE_VERSION = env.str("SERVICE_VERSION", default="0.1.0")
 
+# ---------------------------------------------------------------------------
+# Ambiente de ejecucion
+# ---------------------------------------------------------------------------
+# Decide contra que puede operar el servicio. La regla se aplica en
+# samy_common.providers.environment y se comprueba en ensure_ready(), que es
+# la guardia por la que pasa toda operacion que mueve dinero:
+#
+#     ENVIRONMENT=production   <->  proveedores en modo PRODUCTION
+#     cualquier otro ambiente  <->  proveedores en modo SANDBOX
+#
+# Un valor desconocido NO se interpreta como desarrollo: se rechaza. Y el
+# valor por omision es "development", de modo que un despliegue productivo
+# que olvide definirlo se niega a usar credenciales de produccion en vez de
+# venderlas por error.
+ENVIRONMENT = env.str("ENVIRONMENT", default="development")
+
 SECRET_KEY = env.str("DJANGO_SECRET_KEY")
 DEBUG = False
 ALLOWED_HOSTS: list[str] = env.list("DJANGO_ALLOWED_HOSTS", default=[])

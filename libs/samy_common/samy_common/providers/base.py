@@ -152,7 +152,18 @@ class BaseProvider(abc.ABC, Generic[ConfigT]):
         raise NotImplementedError
 
     def ensure_ready(self) -> None:
-        """Guardia previa a cualquier operacion que mueva dinero."""
+        """Guardia previa a cualquier operacion que mueva dinero.
+
+        Dos comprobaciones, y el orden importa. Primero el ambiente: es mas
+        barato que un chequeo de salud (no toca la red) y su fallo es mas
+        grave. Un proveedor de produccion en un entorno de pruebas no debe
+        llegar ni a que le pregunten como esta, porque preguntarselo ya es
+        autenticarse contra produccion con credenciales reales.
+        """
+        from samy_common.providers.environment import verificar_ambiente
+
+        verificar_ambiente(provider_slug=self.slug, provider_mode=self.mode)
+
         health = self.check_health()
         if not health.is_operational:
             raise ProviderNotConfigured(

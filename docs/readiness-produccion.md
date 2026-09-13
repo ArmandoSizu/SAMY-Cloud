@@ -168,6 +168,7 @@ Solo entonces existe un producto vendible, y sigue siendo en sandbox.
 
 | Pendiente | Estado |
 |---|---|
+| Separación SANDBOX/PRODUCTION | ✅ **Hecha.** Ver abajo. |
 | Motor de precios / objeto `Quote` | Bloqueado por la decisión de política de comisión (arriba). |
 | CSP en modo `enforce` | Pendiente. Alpine 3.14.9 usa `new Function()`; hay que elegir entre `@alpinejs/csp` o quitar Alpine del flujo crítico. |
 | Idempotencia de extremo a extremo | Pendiente. |
@@ -176,6 +177,45 @@ Solo entonces existe un producto vendible, y sigue siendo en sandbox.
 | `CENTRO-260905-YKK4` | Orden PAID de $300 sin conciliar. Recomendación escrita; **no ejecutada**. |
 | 8 órdenes CREATED abandonadas | Sin limpiar. |
 | `billpay` sin pruebas | 0 tests. |
+
+---
+
+## Separación SANDBOX / PRODUCTION
+
+Implementada en `samy_common/providers/environment.py` y aplicada en
+`BaseProvider.ensure_ready()`, que es la guardia por la que pasa **toda**
+operación que mueve dinero. Está ahí y no en cada adaptador para que un
+proveedor nuevo herede la protección sin que nadie tenga que acordarse.
+
+    ENVIRONMENT=production   <->  proveedores en modo PRODUCTION
+    cualquier otro ambiente  <->  proveedores en modo SANDBOX
+
+Las dos combinaciones prohibidas son simétricas, y las dos han arruinado
+lanzamientos reales:
+
+| Combinación | Qué pasaría | Qué pasa |
+|---|---|---|
+| producción + sandbox | Se cobra $100 reales, el sandbox responde «éxito», el cliente se va sin recarga. **Parece que funcionó.** | Rechazado. |
+| pruebas + producción | La suite gasta saldo real y recarga teléfonos reales, en silencio. | Rechazado. |
+
+Detalles que importan:
+
+- **Fail-closed.** Un `ENVIRONMENT` vacío o desconocido no se interpreta como
+  desarrollo: se rechaza. Un servicio que no sabe dónde está no mueve dinero.
+  «produccion» en español **no** cuenta como `production`.
+- **El valor por omisión es `development`**, así que un despliegue productivo
+  que olvide definirlo se niega a usar credenciales de producción, en lugar de
+  venderlas por error.
+- **`staging` exige sandbox.** Un staging con credenciales reales cobra de
+  verdad.
+- **El ambiente se revisa ANTES de la salud.** Preguntarle a un proveedor cómo
+  está con credenciales productivas ya es autenticarse contra producción.
+- `ENVIRONMENT=test` en los cuatro `settings/test.py`. Eso es lo que impide que
+  TAECEL en modo `PRODUCTION` corra en la suite.
+
+Verificado el 13/09/2026 en el contenedor en marcha: Reloadly sandbox en
+`development` sigue pasando (el golden path no se rompió), y un proveedor en
+modo `PRODUCTION` es rechazado con `code=provider_environment_mismatch`.
 
 ---
 

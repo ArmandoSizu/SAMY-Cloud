@@ -379,3 +379,61 @@ class SinReintentoAutomatico(SimpleTestCase):
         sabe llevaria a concluir "no existe" y recargar de nuevo.
         """
         self.assertIsNone(_operativo().find_by_custom_identifier("ref-123"))
+
+
+class GuardiaDeAmbiente(SimpleTestCase):
+    """La suite corre con ENVIRONMENT=test: PRODUCTION queda prohibido.
+
+    Es la proteccion concreta contra "Taecel Production no debe correr en
+    tests". Y se comprueba a traves de ``ensure_ready()``, no llamando al
+    verificador a mano, porque lo que importa es que el camino real este
+    cerrado.
+    """
+
+    def _productivo(self) -> taecel.TaecelProvider:
+        return taecel.TaecelProvider(
+            taecel.TaecelConfig(
+                base_url=URL_FALSA,
+                key=KEY_FALSA,
+                nip=NIP_FALSO,
+                contract_verified=True,
+                path_balance=RUTA_SALDO,
+            ),
+            ProviderMode.PRODUCTION,
+        )
+
+    def test_modo_produccion_no_pasa_en_la_suite(self) -> None:
+        from samy_common.providers.environment import ProviderEnvironmentMismatch
+
+        with self.assertRaises(ProviderEnvironmentMismatch):
+            self._productivo().ensure_ready()
+
+    def test_no_se_autentica_siquiera(self) -> None:
+        """El ambiente se revisa ANTES de la salud.
+
+        Preguntarle a TAECEL como esta con credenciales productivas ya es
+        autenticarse contra produccion. La guardia tiene que cortar antes.
+        """
+        proveedor = self._productivo()
+        with mock.patch.object(
+            taecel.TaecelProvider,
+            "check_health",
+            side_effect=AssertionError("reviso la salud contra produccion"),
+        ):
+            with self.assertRaises(ProviderNotConfigured):
+                proveedor.ensure_ready()
+
+    def test_send_topup_productivo_no_manda_nada(self) -> None:
+        proveedor = self._productivo()
+        with mock.patch.object(
+            taecel.TaecelProvider, "_client", side_effect=AssertionError("toco la red")
+        ):
+            with self.assertRaises(ProviderNotConfigured):
+                proveedor.send_topup(_peticion())
+
+    def test_sandbox_si_pasa_la_guardia(self) -> None:
+        """El contrapunto: en la suite, sandbox es el modo correcto."""
+        proveedor = _operativo()
+        transporte = TransporteFalso({RUTA_SALDO: SALDO_SUFICIENTE})
+        with _con_transporte(proveedor, transporte):
+            proveedor.ensure_ready()
