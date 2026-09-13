@@ -28,10 +28,36 @@ def _mode(raw: str) -> ProviderMode:
 
 
 def get_provider(slug: str | None = None) -> "TopupProvider":
-    from apps.providers import reloadly, taecel  # noqa: F401
+    from apps.providers import linntae, reloadly, taecel  # noqa: F401
 
     slug = slug or settings.TOPUP_PROVIDER
     provider_cls = topup_registry.get(slug)
+
+    if slug == "linntae":
+        return provider_cls(  # type: ignore[return-value]
+            linntae.LinntaeConfig(
+                base_url=settings.LINNTAE_BASE_URL,
+                username=settings.LINNTAE_USERNAME,
+                password=settings.LINNTAE_PASSWORD,
+                ambiente=settings.LINNTAE_ENV,
+                connect_timeout=settings.LINNTAE_CONNECT_TIMEOUT,
+                read_timeout=settings.LINNTAE_READ_TIMEOUT,
+                token_ttl_segundos=settings.LINNTAE_TOKEN_TTL_SECONDS,
+                reintentos_lectura=settings.LINNTAE_REINTENTOS_LECTURA,
+                type_balance=settings.LINNTAE_TYPE_BALANCE,
+                extra_comision=settings.LINNTAE_EXTRA_COMISION,
+                # Dos banderas, y hacen falta las dos. LINNTAE_ENABLED dice
+                # "este proveedor esta en uso"; ALLOW_REAL_PROVIDER_TRANSACTIONS
+                # dice "tengo autorizacion para mover dinero". Separarlas
+                # permite tener Linntae configurado y visible en el panel sin
+                # que pueda gastar un peso.
+                permitir_operaciones_reales=bool(
+                    settings.LINNTAE_ENABLED
+                    and settings.ALLOW_REAL_PROVIDER_TRANSACTIONS
+                ),
+            ),
+            _mode(settings.LINNTAE_MODE),
+        )
 
     if slug == "reloadly":
         return provider_cls(  # type: ignore[return-value]
@@ -64,7 +90,7 @@ def get_provider(slug: str | None = None) -> "TopupProvider":
 
 def describe_all() -> list[dict[str, object]]:
     """Metadatos y salud de todos los adaptadores, para el panel de plataforma."""
-    from apps.providers import reloadly, taecel  # noqa: F401
+    from apps.providers import linntae, reloadly, taecel  # noqa: F401
 
     described = []
     for meta in topup_registry.describe_all():

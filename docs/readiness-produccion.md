@@ -28,6 +28,13 @@ lo que este archivo existe para evitar.
 | `TAECEL_COMMISSION_MECHANISM` | **`BONUS_ON_FUNDING`** | **No es un rebate por transacción.** Fondear $5,000 → $5,300 de saldo. El descuento efectivo es **5.66%**, no 6%. Ver abajo. |
 | `TAECEL_CONTRACT_VERIFIED` | FALSE | Nadie ha leído todavía la documentación real de su web service. |
 | `TAECEL_FUNDED` | FALSE | No se ha comprado saldo. |
+| `LINNTAE_SPEC_PUBLISHED` | **TRUE** | Especificación OpenAPI 2.0.0 recibida. Rutas, campos y códigos **no son suposiciones**. |
+| `LINNTAE_DEMO_INTEGRATED` | **TRUE** | Adaptador completo: auth, saldo, catálogo, comisiones, compra protegida y conciliación. 107 pruebas. |
+| `LINNTAE_CREDENTIALS_SET` | FALSE | Las pone Sizú en `.env`. Sin ellas: `NOT_CONFIGURED`. |
+| `LINNTAE_TYPE_BALANCE_CONFIRMED` | FALSE | **No lo publican.** Mientras falte: `DEGRADED`, nada vendible. |
+| `LINNTAE_COMMISSION_MECHANISM` | **`SIN_DETERMINAR`** | Se conoce que hay comisión; **no cómo se aplica**. Se resuelve midiendo, no leyendo. Ver abajo. |
+| `LINNTAE_DEMO_RECARGA_EJECUTADA` | **NO** | Requiere autorización explícita de Sizú. |
+| `LINNTAE_PRODUCTION` | FALSE | No activada. Exige 6 condiciones simultáneas. |
 | `CONEKTA_SANDBOX` | TRUE | Operando. Órdenes y webhooks reales de sandbox. |
 | `CONEKTA_PRODUCTION` | FALSE | KYC sin completar. |
 | `RELOADLY_SANDBOX` | TRUE | `READY`. Saldo de prueba disponible. |
@@ -40,9 +47,85 @@ mapping de proveedor aprobado. Eso es correcto, no es un defecto.
 
 ---
 
+## Linntae cambia el camino más corto a la primera recarga
+
+Documentación completa: [`docs/providers/linntae.md`](providers/linntae.md).
+
+Hasta ahora el único camino a una recarga comercial en México era TAECEL, y
+está esperando a un tercero sin SLA. Linntae abre un segundo camino que **no
+depende de esperar**, y la diferencia de fondo es una sola:
+
+> TAECEL no publica su documentación. Linntae sí.
+
+Eso mueve el trabajo de "adivinar el contrato y protegerse de estar
+equivocado" a "implementar el contrato". Las rutas, los campos, los códigos de
+error y los dos ambientes de Linntae vienen de su especificación OpenAPI, no de
+la memoria de nadie.
+
+Lo que **sigue sin conocerse** en Linntae son dos cosas, y las dos están
+bloqueadas por configuración en vez de resueltas por suposición:
+
+1. **La enumeración de `typeBalance`.** Su API lo exige en cada compra y no
+   publica qué número es cada bolsa. Que `1` sea "SALDO PLATAFORMA" es una
+   inferencia de sus ejemplos. Mientras `LINNTAE_TYPE_BALANCE` esté vacío, el
+   proveedor reporta `DEGRADED` y ningún producto es vendible.
+2. **Cómo aplica su comisión.** Y esto merece decirse con el mismo cuidado que
+   se le puso al 6% de TAECEL.
+
+### Saber el porcentaje no es saber el costo
+
+Con TAECEL el hallazgo fue que 6% de **bono al fondear** no es 6% de
+descuento: es 5.66%. Con Linntae el problema es anterior. Su esquema se llama
+`"1.-COMISION SOBRE VENTA"`, su consulta de saldo devuelve `plataforma` y
+`comision` como **dos bolsas separadas**, y su histórico de movimientos muestra
+cargos a `SALDO PLATAFORMA` por importes **mayores** que el valor facial. Todo
+eso apunta a que el saldo se descuenta completo y la comisión se abona aparte.
+
+Apuntar no es saber. El mismo 6% da tres costos distintos para $100:
+
+| Mecanismo | Costo de una recarga de $100 |
+|---|---|
+| `DESCUENTO_POR_TRANSACCION` | $94.00 |
+| `BONO_AL_FONDEAR` (es el de TAECEL) | $94.34 |
+| `COMISION_ACREDITADA_APARTE` | **$100.00** |
+| `SIN_DETERMINAR` (es el de Linntae hoy) | **no se sabe** |
+
+Si resultara ser el tercero, la consecuencia comercial es fuerte y hay que
+verla **antes** de fijar precios: una recarga de $100 en efectivo sin cuota
+deja **cero** de margen inmediato, y con tarjeta pierde la comisión completa de
+Conekta ($7.43). La ganancia existiría, pero en una bolsa distinta, y que esa
+bolsa sea líquida es una pregunta que su documento no contesta.
+
+Así que el motor de precios reporta **margen desconocido** en vez de afirmar un
+número. Y se resuelve midiendo: `TOPUP_MEDIR_SALDO_PROVIDERS=linntae` lee el
+saldo antes y después de cada recarga y lo guarda en
+`TopupFulfillment.economia`. Con dos números se distinguen los tres mecanismos.
+
+### Lo que falta de Linntae, exclusivamente
+
+1. Credenciales DEMO en `.env` (las pone Sizú).
+2. Confirmación escrita de `typeBalance` para nuestra cuenta.
+3. Autorización explícita de Sizú para la primera recarga DEMO.
+4. La medición del mecanismo de comisión (sale de esa misma recarga).
+5. Acuerdo sobre países / IPs permitidas, **antes de elegir región de nube**:
+   su API documenta `HTTP 403` con `Error country-US-403`, o sea que rechaza
+   por país de origen. Desarrollando desde México esto no se ve; en el primer
+   despliegue sí.
+6. Para producción: cuenta productiva, saldo fondeado y mappings productivos
+   aprobados por una persona.
+
+Ninguno de los seis se resuelve escribiendo código.
+
+---
+
 ## Lo que bloquea la primera venta real, y quién lo bloquea
 
-Los dos bloqueos son de terceros. Ninguno se resuelve escribiendo código.
+Ningún bloqueo se resuelve escribiendo código.
+
+Para **recargas** hay ahora dos caminos y conviene no confundirlos: TAECEL
+espera a un tercero sin SLA, mientras Linntae solo espera credenciales y una
+confirmación (ver la sección anterior). Para **cobro con tarjeta** el bloqueo
+sigue siendo uno solo y es de Conekta.
 
 ### 1. TAECEL — acceso API (ticket ya enviado, esperando respuesta)
 

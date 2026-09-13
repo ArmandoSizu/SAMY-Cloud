@@ -91,6 +91,14 @@ class BaseConciliacion(TestCase):
         p.slug = "reloadly"
         p.display_name = "Reloadly"
         p.mode = "SANDBOX"
+        # Un MagicMock contesta CUALQUIER metodo con otro MagicMock, y un
+        # MagicMock no es None. Sin esta linea, el doble afirmaria haber
+        # resuelto la conciliacion por contexto y las pruebas de abajo
+        # pasarian sin ejercitar nada. Es el mismo accidente que ya dejo
+        # pasar unas pruebas de saldo en este proyecto: la conducta por
+        # omision de un doble tiene que ser la conducta por omision del
+        # contrato, y en ``estado_por_contexto`` esa es "no lo se".
+        p.estado_por_contexto.return_value = None
         for nombre, valor in kwargs.items():
             if isinstance(valor, Exception):
                 getattr(p, nombre).side_effect = valor

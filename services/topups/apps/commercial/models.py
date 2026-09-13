@@ -578,6 +578,120 @@ class ProviderProductMapping(models.Model):
         self.save(update_fields=["status", "status_reason", "updated_at"])
 
 
+class AlcanceComision(models.TextChoices):
+    """A que se le aplica una comision reportada por un proveedor."""
+
+    OPERADOR = "OPERADOR", "Operador"
+    SKU = "SKU", "SKU / producto"
+    INDETERMINADO = "INDETERMINADO", "Indeterminado"
+
+
+class ProviderCommission(models.Model):
+    """La comision que un proveedor dice concedernos, tal como la dijo.
+
+    POR QUE ES UNA TABLA Y NO UNA CONSTANTE
+    ---------------------------------------
+
+    Porque la comision no es un dato del proveedor: es un dato de NUESTRA
+    cuenta con ese proveedor. Linntae dio numeros comerciales de referencia
+    (alrededor de 6% en operadores tradicionales, 5% en virtuales) y su propia
+    especificacion muestra ejemplos con 5.5%. Las dos cosas pueden ser
+    ciertas: depende del tendero, del ambiente y de lo negociado.
+
+    Un porcentaje escrito en el codigo seria correcto el dia que se escribio y
+    silenciosamente falso despues, y el sintoma no seria un error: seria un
+    margen que no cuadra a fin de mes.
+
+    Asi que aqui se guarda lo que el proveedor **respondio**, con la fecha en
+    que lo respondio y su texto crudo. Es la evidencia.
+
+    LO QUE ESTA TABLA NO AFIRMA
+    ---------------------------
+
+    ``mecanismo`` es lo que creemos sobre COMO se aplica esa comision, y nace
+    en ``SIN_DETERMINAR``. Saber "5.5%" no es saber lo que cuesta una recarga:
+    un descuento por transaccion, un bono al fondear y una comision abonada a
+    otra bolsa dan tres costos distintos con el mismo porcentaje (ver
+    ``samy_common.pricing.MecanismoComision``).
+
+    Mientras el mecanismo sea ``SIN_DETERMINAR``, el motor de precios reporta
+    margen desconocido en vez de afirmar un numero. Se resuelve midiendo, no
+    leyendo.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    provider_slug = models.CharField(max_length=40, db_index=True)
+    environment = models.CharField(
+        max_length=16, choices=Environment.choices, db_index=True
+    )
+
+    #: Si la tasa aplica a un operador o a un producto concreto. Importa: la
+    #: respuesta de Linntae tiene dos formas y cada una identifica una cosa
+    #: distinta. Guardarlas bajo una sola etiqueta haria creer que la comision
+    #: de un operador aplica a un SKU, o al contrario.
+    alcance = models.CharField(
+        max_length=16,
+        choices=AlcanceComision.choices,
+        default=AlcanceComision.INDETERMINADO,
+    )
+    #: Identificador del operador o del SKU, tal como lo devolvio el proveedor.
+    clave = models.CharField(max_length=128)
+    #: Nombre con el que el proveedor lo llama. Para poder revisarlo a ojo.
+    nombre = models.CharField(max_length=160, blank=True, default="")
+    categoria = models.CharField(max_length=120, blank=True, default="")
+
+    #: Tasa en puntos base. ``None`` = vino en la respuesta y no se pudo leer.
+    #: No se rellena con cero: cero seria afirmar que no hay comision.
+    tasa_bps = models.IntegerField(null=True, blank=True)
+    #: El texto original: ``"5.5%"``. Es la evidencia de lo que se interpreto.
+    tasa_texto = models.CharField(max_length=32, blank=True, default="")
+    #: ``False`` cuando la tasa no cabe exacta en puntos base enteros y hubo
+    #: que redondear. Se declara en vez de redondear en silencio.
+    exacta_en_bps = models.BooleanField(default=True)
+
+    #: Ver el docstring de la clase. Nace sin determinar, a proposito.
+    mecanismo = models.CharField(
+        max_length=32,
+        default="SIN_DETERMINAR",
+        help_text=(
+            "Valor de samy_common.pricing.MecanismoComision. SIN_DETERMINAR "
+            "hasta haberlo medido contra el saldo real."
+        ),
+    )
+
+    #: La fila cruda del proveedor. Evidencia.
+    raw = models.JSONField(default=dict, blank=True)
+    observada_en = models.DateTimeField(default=timezone.now)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Comision de proveedor"
+        verbose_name_plural = "Comisiones de proveedor"
+        ordering = ["provider_slug", "environment", "alcance", "nombre"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider_slug", "environment", "alcance", "clave"],
+                name="comision_unica_por_proveedor_ambiente_alcance_clave",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["provider_slug", "environment", "alcance"]),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.provider_slug}:{self.alcance}:{self.clave} "
+            f"{self.tasa_texto or 'sin tasa'} ({self.environment})"
+        )
+
+    @property
+    def conocida(self) -> bool:
+        return self.tasa_bps is not None
+
+
 class ProviderCatalogItem(models.Model):
     """El catalogo del proveedor, tal como lo devolvio, guardado.
 

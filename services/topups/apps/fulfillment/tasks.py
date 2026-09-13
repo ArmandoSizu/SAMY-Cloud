@@ -20,7 +20,12 @@ from django.utils import timezone
 
 from apps.fulfillment.models import TopupFulfillment
 from apps.fulfillment.services import execute_topup
-from apps.providers.base import TopupStatus
+from apps.providers.base import (
+    ContextoConciliacion,
+    TopupProvider,
+    TopupResult,
+    TopupStatus,
+)
 from apps.providers.registry import get_provider
 from samy_common.events.bus import Event, RedisStreamBus
 from samy_common.providers.exceptions import ProviderError
@@ -264,69 +269,15 @@ def reconcile_pending_topups(batch_size: int = 50) -> dict[str, int]:
             )
             continue
 
-        # Dos preguntas DISTINTAS, y confundirlas costaba dinero.
-        #
-        # Con folio del proveedor se consulta por folio. Sin folio -que es
-        # justo el caso indeterminado, porque un timeout ocurre ANTES de que
-        # llegue el folio- hay que buscar por NUESTRA referencia.
-        #
-        # Antes este codigo hacia `provider_reference or idempotency_key` y le
-        # pasaba nuestra clave a get_topup_status(), que espera la del
-        # proveedor. Reloadly respondia 404 y su adaptador traduce 404 a
-        # FAILED, con toda la razon: si el proveedor no conoce SU folio, la
-        # recarga no existe. Pero nuestra clave no es su folio, asi que el 404
-        # no significaba nada, y el resultado era marcar como FALLIDA una
-        # recarga que pudo haberse aplicado. Y entonces se reembolsaba al
-        # cliente que si recibio su saldo.
-        try:
-            if fulfillment.provider_reference:
-                result = provider.get_topup_status(fulfillment.provider_reference)
-            else:
-                encontrada = provider.find_by_custom_identifier(
-                    fulfillment.idempotency_key
-                )
-                if encontrada is None:
-                    # None es "no lo se", NO "no existe". Un adaptador que no
-                    # sepa buscar por nuestra referencia deja la recarga en
-                    # revision manual, que es lo correcto: es preferible que
-                    # una persona la mire a que el sistema adivine.
-                    still_unknown += 1
-                    log.info(
-                        "topup_reconciliation_sin_folio_y_sin_hallazgo",
-                        fulfillment_id=str(fulfillment.id),
-                        provider=fulfillment.provider_slug,
-                    )
-                    continue
-                result = encontrada
-        except ProviderError as exc:
+        result = _consultar_estado(provider, fulfillment)
+        if result is None:
             still_unknown += 1
-            log.warning(
-                "topup_reconciliation_query_failed",
-                fulfillment_id=str(fulfillment.id),
-                error=exc.message,
-            )
             continue
 
-        if result.status == TopupStatus.SUCCEEDED:
-            fulfillment.provider_reference = result.provider_reference[:128]
-            fulfillment.operator_reference = result.operator_reference[:128]
-            fulfillment.save(
-                update_fields=["provider_reference", "operator_reference", "updated_at"]
-            )
-            fulfillment.transition(
-                FulfillmentState.SUCCEEDED, reason="Conciliacion: el operador confirmo."
-            )
-            _notify(fulfillment, succeeded=True)
+        desenlace = _aplicar_resultado(fulfillment, result)
+        if desenlace == "ok":
             resolved_ok += 1
-        elif result.status == TopupStatus.FAILED:
-            fulfillment.failure_reason = (
-                result.failure_reason or "Conciliacion: el operador rechazo."
-            )[:255]
-            fulfillment.save(update_fields=["failure_reason", "updated_at"])
-            fulfillment.transition(
-                FulfillmentState.FAILED, reason=fulfillment.failure_reason
-            )
-            _notify(fulfillment, succeeded=False)
+        elif desenlace == "failed":
             resolved_failed += 1
         else:
             still_unknown += 1
@@ -343,6 +294,122 @@ def reconcile_pending_topups(batch_size: int = 50) -> dict[str, int]:
         "resolved_failed": resolved_failed,
         "still_unknown": still_unknown,
     }
+
+
+def _contexto_de(fulfillment: TopupFulfillment) -> ContextoConciliacion:
+    """Los datos de la operacion, para los proveedores que preguntan asi."""
+    return ContextoConciliacion(
+        fulfillment_id=fulfillment.id,
+        provider_product_id=fulfillment.product.provider_product_id,
+        # Se deriva del E.164 guardado en vez de guardar otra columna: dos
+        # columnas con el mismo telefono acabarian divergiendo.
+        phone_national=fulfillment.phone_e164.removeprefix("+52"),
+        amount=fulfillment.amount,
+        idempotency_key=fulfillment.idempotency_key,
+        provider_reference=fulfillment.provider_reference,
+        enviado_en=fulfillment.sent_at,
+    )
+
+
+def _consultar_estado(
+    provider: "TopupProvider", fulfillment: TopupFulfillment
+) -> TopupResult | None:
+    """Pregunta al proveedor que paso. ``None`` = no se pudo saber.
+
+    TRES preguntas distintas, y confundirlas costaba dinero:
+
+    1. **Por contexto** (``estado_por_contexto``). Va primero porque un
+       adaptador solo la implementa cuando es su unica consulta fiable.
+       Linntae es el caso: su API identifica una recarga por ``idOffer`` +
+       telefono, no por folio ni por ninguna referencia nuestra. Por omision
+       devuelve ``None``, asi que los adaptadores que conciliaban por folio
+       no cambian de camino.
+
+    2. **Por folio del proveedor** (``get_topup_status``), cuando lo hay.
+
+    3. **Por NUESTRA referencia** (``find_by_custom_identifier``), que es el
+       caso sin folio: un timeout ocurre ANTES de que llegue el folio.
+
+    Antes este codigo hacia ``provider_reference or idempotency_key`` y le
+    pasaba nuestra clave a ``get_topup_status()``, que espera la del
+    proveedor. Reloadly respondia 404 y su adaptador traduce 404 a FAILED,
+    con toda la razon: si el proveedor no conoce SU folio, la recarga no
+    existe. Pero nuestra clave no es su folio, asi que ese 404 no significaba
+    nada, y el resultado era marcar como FALLIDA una recarga que pudo haberse
+    aplicado. Y entonces se reembolsaba al cliente que si recibio su saldo.
+    """
+    try:
+        por_contexto = provider.estado_por_contexto(_contexto_de(fulfillment))
+    except ProviderError as exc:
+        por_contexto = None
+        log.warning(
+            "topup_reconciliation_contexto_fallo",
+            fulfillment_id=str(fulfillment.id),
+            error=exc.message,
+        )
+
+    if por_contexto is not None:
+        return por_contexto
+
+    try:
+        if fulfillment.provider_reference:
+            return provider.get_topup_status(fulfillment.provider_reference)
+
+        encontrada = provider.find_by_custom_identifier(fulfillment.idempotency_key)
+        if encontrada is None:
+            # None es "no lo se", NO "no existe". Un adaptador que no sepa
+            # buscar por nuestra referencia deja la recarga en revision
+            # manual, que es lo correcto: es preferible que una persona la
+            # mire a que el sistema adivine.
+            log.info(
+                "topup_reconciliation_sin_folio_y_sin_hallazgo",
+                fulfillment_id=str(fulfillment.id),
+                provider=fulfillment.provider_slug,
+            )
+            return None
+        return encontrada
+    except ProviderError as exc:
+        log.warning(
+            "topup_reconciliation_query_failed",
+            fulfillment_id=str(fulfillment.id),
+            error=exc.message,
+        )
+        return None
+
+
+def _aplicar_resultado(
+    fulfillment: TopupFulfillment, result: TopupResult
+) -> str:
+    """Cierra la recarga segun la evidencia. Devuelve "ok", "failed" o "unknown".
+
+    Solo SUCCEEDED y FAILED cierran. Cualquier otro estado -incluido
+    UNKNOWN- deja la recarga donde esta: en revision, esperando a una
+    persona o a una consulta que si concluya.
+    """
+    if result.status == TopupStatus.SUCCEEDED:
+        fulfillment.provider_reference = result.provider_reference[:128]
+        fulfillment.operator_reference = result.operator_reference[:128]
+        fulfillment.save(
+            update_fields=["provider_reference", "operator_reference", "updated_at"]
+        )
+        fulfillment.transition(
+            FulfillmentState.SUCCEEDED, reason="Conciliacion: el operador confirmo."
+        )
+        _notify(fulfillment, succeeded=True)
+        return "ok"
+
+    if result.status == TopupStatus.FAILED:
+        fulfillment.failure_reason = (
+            result.failure_reason or "Conciliacion: el operador rechazo."
+        )[:255]
+        fulfillment.save(update_fields=["failure_reason", "updated_at"])
+        fulfillment.transition(
+            FulfillmentState.FAILED, reason=fulfillment.failure_reason
+        )
+        _notify(fulfillment, succeeded=False)
+        return "failed"
+
+    return "unknown"
 
 
 def _notify(fulfillment: TopupFulfillment, *, succeeded: bool) -> None:

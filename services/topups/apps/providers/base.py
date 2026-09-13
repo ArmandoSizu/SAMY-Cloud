@@ -13,6 +13,7 @@ from __future__ import annotations
 import abc
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from samy_common.money import Money
@@ -25,6 +26,7 @@ __all__ = [
     "TopupResult",
     "TopupStatus",
     "CatalogProduct",
+    "ContextoConciliacion",
 ]
 
 
@@ -122,6 +124,48 @@ class TopupResult:
         return self.status == TopupStatus.SUCCEEDED
 
 
+@dataclass(frozen=True, slots=True)
+class ContextoConciliacion:
+    """Todo lo que se sabe de una recarga que quedo sin desenlace.
+
+    POR QUE EXISTE
+    --------------
+
+    Los dos ganchos historicos de conciliacion suponen que el proveedor sabe
+    contestar a una de estas dos preguntas:
+
+        get_topup_status(folio_del_proveedor)
+        find_by_custom_identifier(clave_nuestra)
+
+    Hay proveedores que no saben contestar a ninguna. Linntae es uno: sus dos
+    consultas identifican una recarga por ``idOffer`` + ``telefono``, no por
+    folio ni por ninguna referencia nuestra. Con solo esos dos ganchos, la
+    unica implementacion honesta para un proveedor asi es devolver "no lo se"
+    siempre, y entonces ninguna recarga suya se concilia nunca.
+
+    Este contexto lleva los datos de la OPERACION, no una clave. Con eso se
+    puede preguntar a cualquier proveedor en los terminos que acepte.
+
+    Es opcional por diseno: ``estado_por_contexto()`` devuelve ``None`` por
+    omision, asi que los adaptadores que ya funcionan por folio no cambian de
+    comportamiento.
+    """
+
+    fulfillment_id: uuid.UUID
+    #: Identificador del producto EN EL PROVEEDOR. Para Linntae, el idOffer.
+    provider_product_id: str
+    #: Numero nacional de 10 digitos.
+    phone_national: str
+    amount: Money
+    #: Nuestra clave. Sirve para registrar, no necesariamente para preguntar.
+    idempotency_key: str
+    #: Folio del proveedor si alcanzo a llegar. Vacio tras un timeout.
+    provider_reference: str = ""
+    #: Cuando se envio. Decide que consultas tienen sentido: hay proveedores
+    #: con ventanas de tiempo (Linntae: 60 segundos para la consulta directa).
+    enviado_en: datetime | None = None
+
+
 class TopupProvider(BaseProvider[Any], abc.ABC):
     """Contrato de un proveedor de tiempo aire."""
 
@@ -174,5 +218,25 @@ class TopupProvider(BaseProvider[Any], abc.ABC):
         Por omision devuelve ``None`` ("no lo se"), que es la respuesta segura:
         un adaptador que no sepa buscar deja la recarga en revision manual en
         vez de arriesgar un duplicado.
+        """
+        return None
+
+    def estado_por_contexto(
+        self, contexto: "ContextoConciliacion"
+    ) -> TopupResult | None:
+        """Consulta el estado con los DATOS de la operacion, no con un folio.
+
+        Es el gancho para proveedores cuya API no acepta una consulta por
+        folio ni por referencia propia. Ver ``ContextoConciliacion``.
+
+        La conciliacion lo intenta ANTES de los otros dos, porque un
+        adaptador que implementa esto lo hace justamente porque es su unica
+        consulta fiable. Por omision devuelve ``None``, asi que los
+        adaptadores que conciliaban por folio siguen haciendolo igual.
+
+        ``None`` significa "no lo se" y deja la recarga en revision. Nunca
+        debe devolverse un resultado FAILED por no haber encontrado registro:
+        la ausencia de evidencia no es evidencia de ausencia, y aqui la
+        diferencia es reembolsar a un cliente que si recibio su saldo.
         """
         return None

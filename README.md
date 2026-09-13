@@ -7,7 +7,9 @@ Plataforma SaaS multi-tienda para **recargas telefónicas**, **pago de servicios
 > Conekta y Reloadly están conectados **únicamente en SANDBOX**: los cobros con tarjeta no
 > mueven dinero real y las recargas de prueba **no llegan a ningún teléfono real**. Taecel,
 > que sería el proveedor comercial para México, está **pendiente de contrato** y su adaptador
-> rechaza operar.
+> rechaza operar. **Linntae está integrado en DEMO** (`apidemo.linn.mx`) y no tiene
+> producción certificada: su adaptador exige dos banderas explícitas antes de mover un peso
+> y todavía **no ha enviado ninguna recarga**. Ver [`docs/providers/linntae.md`](docs/providers/linntae.md).
 >
 > El sistema **no simula** operaciones. Cuando faltan credenciales o contrato, el adaptador
 > reporta `NOT_CONFIGURED` o `PENDING_CONTRACT` y **se niega a ejecutar**; nunca devuelve un
@@ -125,8 +127,17 @@ Investigación verificada (septiembre 2026). Detalle completo en
 | **Conekta** | Cobro con tarjeta | ✅ Conectado y verificado | **SANDBOX** — no mueve dinero real |
 | **Efectivo en mostrador** | Cobro en efectivo | ✅ Operativo | real |
 | **Reloadly** | Recargas (laboratorio) | ✅ Conectado y verificado | **SANDBOX** — no llega a teléfonos reales |
+| **Linntae** | Recargas (comercial MX) | 🔧 Integración **DEMO** · sin recarga enviada | **DEMO** (`apidemo.linn.mx`) — [doc](docs/providers/linntae.md) |
 | **TAECEL** | Recargas (comercial MX) | ⏸ Cuenta registrada · API pendiente | [readiness](docs/readiness-produccion.md) |
 | **tapi / Arcus** | CFE, agua | ⏸ Pendiente de contrato | — |
+
+Linntae es el único proveedor de recargas cuya **especificación OpenAPI es pública**, así que
+sus rutas y campos no son suposiciones. Lo que sí sigue sin conocerse —la enumeración de
+`typeBalance` y **cómo** aplica su comisión— está protegido por configuración: mientras falte,
+el adaptador reporta `DEGRADED` y el producto no es vendible. Saber que la comisión es "6%" no
+es saber lo que cuesta una recarga; el mismo porcentaje da tres costos distintos según el
+mecanismo, y el de Linntae se determina **midiendo** el saldo antes y después de una
+operación, no leyendo un porcentaje.
 
 ### Flujo comprobado de extremo a extremo
 

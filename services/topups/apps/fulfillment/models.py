@@ -82,6 +82,31 @@ class TopupFulfillment(models.Model):
     failure_reason = models.CharField(max_length=255, blank=True, default="")
     raw_response = models.JSONField(default=dict, blank=True)
 
+    #: Lo que esta recarga costo del lado del PROVEEDOR, y la evidencia con la
+    #: que se calculo.
+    #:
+    #: Va separado de ``raw_response`` a proposito: ahi vive la respuesta del
+    #: proveedor tal como llego, y mezclar conclusiones propias con datos
+    #: ajenos en el mismo campo hace imposible saber, meses despues, cual de
+    #: las dos cosas se esta leyendo.
+    #:
+    #: Guarda, cuando se conocen: ``comision_bps``, ``mecanismo``,
+    #: ``costo_proveedor_cents``, ``comision_acreditada_cents``,
+    #: ``extra_comision``, ``saldo_antes_cents`` y ``saldo_despues_cents``.
+    #:
+    #: Los dos saldos son la razon principal de que este campo exista: son la
+    #: MEDICION que permite deducir el mecanismo de comision de un proveedor
+    #: nuevo en vez de suponerlo. Si al recargar $100 la bolsa de plataforma
+    #: baja $100, la comision se abona aparte; si baja $94.34, es un bono al
+    #: fondear; si baja $94.00, es un descuento por transaccion. Los tres
+    #: casos se distinguen con dos numeros, y solo si se guardaron.
+    #:
+    #: Lo que NO va aqui: el total cobrado al cliente ni el costo de la
+    #: pasarela. Esos dependen del metodo de pago y viven en la orden, en el
+    #: servicio de Pagos. Copiarlos aqui crearia una segunda version de la
+    #: verdad sobre cuanto pago un cliente.
+    economia = models.JSONField(default=dict, blank=True)
+
     correlation_id = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
     created_at = models.DateTimeField(default=timezone.now, db_index=True)

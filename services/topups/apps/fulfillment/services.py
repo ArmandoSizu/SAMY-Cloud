@@ -172,6 +172,16 @@ def execute_topup(*, fulfillment: TopupFulfillment) -> TopupFulfillment:
     fulfillment.provider_mode = str(provider.mode)
     fulfillment.save(update_fields=["attempts", "provider_mode", "updated_at"])
 
+    # Medicion del saldo ANTES de enviar. Ver el campo ``economia`` del
+    # modelo: es lo que permite deducir como aplica su comision un proveedor
+    # nuevo, en vez de suponerlo.
+    #
+    # Cuesta una llamada extra por recarga, asi que se hace solo para los
+    # proveedores listados. Reloadly, por ejemplo, suspende cuentas por exceso
+    # de llamadas, y activarlo para todos seria pagar con disponibilidad una
+    # medicion que ahi no hace falta.
+    saldo_antes = _medir_saldo(provider)
+
     fulfillment = fulfillment.transition(
         FulfillmentState.SENT, reason=f"Enviada a {provider.display_name}."
     )
@@ -211,14 +221,23 @@ def execute_topup(*, fulfillment: TopupFulfillment) -> TopupFulfillment:
         _publish_result(fulfillment, succeeded=False)
         raise
 
+    # El saldo del proveedor acaba de moverse, asi que el valor cacheado por
+    # la guarda ya no vale. Sin esta invalidacion, la siguiente venta de la
+    # racha decide con el saldo de antes de esta recarga.
+    saldo.invalidar(provider)
+
     fulfillment.provider_reference = result.provider_reference[:128]
     fulfillment.operator_reference = result.operator_reference[:128]
     fulfillment.raw_response = result.raw_response
+    fulfillment.economia = _economia(
+        provider, fulfillment, saldo_antes=saldo_antes
+    )
     fulfillment.save(
         update_fields=[
             "provider_reference",
             "operator_reference",
             "raw_response",
+            "economia",
             "updated_at",
         ]
     )
@@ -245,6 +264,90 @@ def execute_topup(*, fulfillment: TopupFulfillment) -> TopupFulfillment:
         )
 
     return fulfillment
+
+
+def _mide_saldo(provider_slug: str) -> bool:
+    """Si conviene medir el saldo alrededor de la recarga de ese proveedor.
+
+    Se decide por lista explicita y no por una bandera global porque el costo
+    no es igual para todos: hay proveedores que castigan el exceso de
+    llamadas suspendiendo la cuenta. La medicion sirve para resolver una
+    pregunta concreta -como aplica su comision- y se apaga cuando ya se
+    resolvio.
+    """
+    listados = getattr(settings, "TOPUP_MEDIR_SALDO_PROVIDERS", ()) or ()
+    return str(provider_slug).strip().lower() in {str(s).lower() for s in listados}
+
+
+def _medir_saldo(provider) -> int | None:  # type: ignore[no-untyped-def]
+    """Saldo del proveedor en centavos, sin cache. ``None`` si no se pudo.
+
+    Nunca levanta. Una medicion es informacion util, no una precondicion: si
+    falla, la recarga tiene que seguir su curso. Hacer que una consulta de
+    saldo pueda tumbar una recarga ya pagada seria convertir una mejora de
+    contabilidad en una perdida de servicio.
+    """
+    if not _mide_saldo(getattr(provider, "slug", "")):
+        return None
+    try:
+        estado = saldo.consultar(provider, usar_cache=False)
+    except Exception as exc:  # noqa: BLE001 - una medicion no puede fallar hacia afuera
+        log.warning(
+            "medicion_de_saldo_fallo", proveedor=getattr(provider, "slug", ""), error=str(exc)[:200]
+        )
+        return None
+    return estado.disponible.cents if estado.disponible is not None else None
+
+
+def _economia(
+    provider,  # type: ignore[no-untyped-def]
+    fulfillment: TopupFulfillment,
+    *,
+    saldo_antes: int | None,
+) -> dict:
+    """Lo que esta recarga costo del lado del proveedor, y con que evidencia.
+
+    Los dos saldos son el dato importante. Si al recargar $100 la bolsa baja
+    $100, la comision se abona aparte; si baja $94.34, hubo bono al fondear;
+    si baja $94.00, es descuento por transaccion. Tres mecanismos, tres
+    costos, y se distinguen con dos numeros. Suponerlos en vez de medirlos es
+    como se fijan precios con un margen que no existe.
+
+    Lo que no se hace aqui: concluir el mecanismo. Se guardan las
+    mediciones; la conclusion la saca una persona mirando varias.
+    """
+    saldo_despues = _medir_saldo(provider)
+    datos: dict = {
+        "proveedor": getattr(provider, "slug", ""),
+        "modo": str(getattr(provider, "mode", "")),
+        "valor_facial_cents": fulfillment.amount_cents,
+        "moneda": fulfillment.currency,
+        "medido_en": timezone.now().isoformat(),
+    }
+
+    if saldo_antes is not None:
+        datos["saldo_antes_cents"] = saldo_antes
+    if saldo_despues is not None:
+        datos["saldo_despues_cents"] = saldo_despues
+    if saldo_antes is not None and saldo_despues is not None:
+        # La diferencia es el costo OBSERVADO, que es el unico que no es una
+        # suposicion. Puede ser negativo si entre las dos lecturas hubo otra
+        # operacion; se guarda tal cual y no se corrige, porque corregirlo
+        # seria inventar.
+        datos["costo_observado_cents"] = saldo_antes - saldo_despues
+
+    configuracion = getattr(provider, "config", None)
+    extra = getattr(configuracion, "extra_comision", None)
+    if extra is not None:
+        datos["extra_comision"] = int(extra)
+
+    mecanismo = getattr(
+        settings, f"{str(getattr(provider, 'slug', '')).upper()}_COMMISSION_MECHANISM", ""
+    )
+    if mecanismo:
+        datos["mecanismo_configurado"] = str(mecanismo)
+
+    return datos
 
 
 def _order_is_paid(order_id: uuid.UUID) -> bool:

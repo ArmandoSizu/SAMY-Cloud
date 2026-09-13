@@ -214,6 +214,98 @@ TAECEL_PATH_BALANCE = env.str("TAECEL_PATH_BALANCE", default="")
 TAECEL_PATH_PRODUCTS = env.str("TAECEL_PATH_PRODUCTS", default="")
 
 # ---------------------------------------------------------------------------
+# LINNTAE
+# ---------------------------------------------------------------------------
+# Proveedor mexicano de tiempo aire y pago de servicios, con API REST
+# documentada (OpenAPI 2.0.0). ESTADO: DEMO. Ver docs/providers/linntae.md.
+#
+# Cuatro condiciones independientes para que pueda operar, y ninguna implica
+# las otras:
+#
+#   1. LINNTAE_ENV coherente con LINNTAE_BASE_URL (guarda de host).
+#   2. Credenciales completas.
+#   3. LINNTAE_TYPE_BALANCE confirmado con Linntae.
+#   4. ALLOW_REAL_PROVIDER_TRANSACTIONS=true.
+#
+# La cuarta esta separada de las otras tres a proposito: tener el sandbox bien
+# configurado no es permiso para mover saldo.
+LINNTAE_ENABLED = env.bool("LINNTAE_ENABLED", default=False)
+
+#: ``demo`` o ``production``. Un valor no reconocido detiene el arranque en
+#: vez de convertirse en sandbox silenciosamente: un error de dedo aqui es la
+#: diferencia entre una recarga de prueba y una real, y prefiero que se vea al
+#: levantar el servicio que al vender.
+LINNTAE_ENV = env.str("LINNTAE_ENV", default="demo").strip().lower()
+if LINNTAE_ENV not in ("demo", "production"):
+    raise ImproperlyConfigured(
+        f"LINNTAE_ENV='{LINNTAE_ENV}' no se reconoce. Los unicos valores "
+        "validos son 'demo' y 'production'."
+    )
+
+#: Modo del proveedor derivado del ambiente de Linntae. Existe porque
+#: samy_common.providers.environment razona en SANDBOX/PRODUCTION y porque
+#: apps.commercial.services.ambiente_actual() lee ``{SLUG}_MODE``. Derivarlo
+#: aqui, en un solo lugar, evita tener dos variables que puedan contradecirse.
+LINNTAE_MODE = "PRODUCTION" if LINNTAE_ENV == "production" else "SANDBOX"
+
+#: URL base. Por omision la de DEMO, que es publica y esta en su
+#: especificacion. Apuntar a produccion exige cambiarla Y poner
+#: LINNTAE_ENV=production: la guarda de host rechaza cualquier otra
+#: combinacion.
+LINNTAE_BASE_URL = env.str("LINNTAE_BASE_URL", default="https://apidemo.linn.mx/api/v1/")
+
+#: Credenciales. Sin valor por omision y jamas en el repositorio.
+LINNTAE_USERNAME = env.str("LINNTAE_USERNAME", default="")
+LINNTAE_PASSWORD = env.str("LINNTAE_PASSWORD", default="")
+
+#: ``typeBalance`` de las compras. **Vacio por omision, y eso bloquea la
+#: venta.** Linntae lo exige como entero obligatorio pero no publica su
+#: enumeracion; que 1 sea "SALDO PLATAFORMA" es una inferencia de sus
+#: ejemplos, no un dato confirmado. Se pone cuando Linntae lo confirme.
+_LINNTAE_TYPE_BALANCE = env.str("LINNTAE_TYPE_BALANCE", default="").strip()
+LINNTAE_TYPE_BALANCE = int(_LINNTAE_TYPE_BALANCE) if _LINNTAE_TYPE_BALANCE else None
+
+#: ``extraComision``: lo que Linntae suma al cobro del cliente en SU punto de
+#: venta. En SAMY el cobro al cliente lo calcula el motor de precios de SAMY,
+#: asi que aqui va CERO. Un valor distinto cambia lo que se carga a la bolsa
+#: de plataforma de una forma que la especificacion no detalla, y eso no se
+#: activa sin haberlo medido en DEMO.
+LINNTAE_EXTRA_COMISION = env.int("LINNTAE_EXTRA_COMISION", default=0)
+
+#: Vida que le damos al token en cache. Linntae NO publica la suya, asi que
+#: este numero es nuestro. Corto a proposito.
+LINNTAE_TOKEN_TTL_SECONDS = env.int("LINNTAE_TOKEN_TTL_SECONDS", default=600)
+
+LINNTAE_CONNECT_TIMEOUT = env.float("LINNTAE_CONNECT_TIMEOUT", default=5.0)
+LINNTAE_READ_TIMEOUT = env.float("LINNTAE_READ_TIMEOUT", default=30.0)
+LINNTAE_REINTENTOS_LECTURA = env.int("LINNTAE_REINTENTOS_LECTURA", default=2)
+
+#: COMO aplica Linntae su comision. Ver samy_common.pricing.MecanismoComision.
+#:
+#: Por omision SIN_DETERMINAR, y eso es lo correcto hoy: su esquema se llama
+#: "COMISION SOBRE VENTA" y su consulta de saldo devuelve ``plataforma`` y
+#: ``comision`` como bolsas separadas, lo que APUNTA a que el saldo se
+#: descuenta al valor facial y la comision se abona aparte. Apuntar no es
+#: saber. Con SIN_DETERMINAR el motor de precios reporta margen desconocido en
+#: vez de afirmar un numero que nadie ha comprobado.
+#:
+#: Se resuelve midiendo: saldo antes y despues de una recarga DEMO.
+LINNTAE_COMMISSION_MECHANISM = env.str(
+    "LINNTAE_COMMISSION_MECHANISM", default="SIN_DETERMINAR"
+).strip().upper()
+
+# ---------------------------------------------------------------------------
+# Interruptor final de operaciones reales
+# ---------------------------------------------------------------------------
+# Vale para cualquier proveedor, no solo Linntae. Es independiente de DEBUG y
+# de ENVIRONMENT a proposito: DEBUG contesta "estoy depurando" y ENVIRONMENT
+# contesta "en que ambiente corro", y ninguna de las dos preguntas es "tengo
+# autorizacion para gastar dinero".
+ALLOW_REAL_PROVIDER_TRANSACTIONS = env.bool(
+    "ALLOW_REAL_PROVIDER_TRANSACTIONS", default=False
+)
+
+# ---------------------------------------------------------------------------
 # Guarda de saldo del proveedor
 # ---------------------------------------------------------------------------
 # Se comprueba en create_fulfillment, ANTES de que exista la orden. Ver
@@ -223,6 +315,19 @@ TAECEL_PATH_PRODUCTS = env.str("TAECEL_PATH_PRODUCTS", default="")
 #: suspende cuentas por exceso de llamadas, pero un saldo viejo deja pasar
 #: ventas con fondos que ya no existen. Segundos, no minutos.
 TOPUP_SALDO_CACHE_SECONDS = env.int("TOPUP_SALDO_CACHE_SECONDS", default=30)
+
+#: Proveedores a los que se les mide el saldo ANTES y DESPUES de cada recarga.
+#:
+#: La medicion es lo que permite deducir como aplica su comision un proveedor
+#: nuevo (ver el campo ``economia`` de TopupFulfillment). Cuesta dos llamadas
+#: por recarga, asi que se decide por lista y no por bandera global: Reloadly
+#: suspende cuentas por exceso de llamadas, y ahi la medicion no hace falta
+#: porque su comision ya se conoce.
+#:
+#: Se apaga sacando el slug de la lista, cuando el mecanismo ya este medido.
+TOPUP_MEDIR_SALDO_PROVIDERS = env.list(
+    "TOPUP_MEDIR_SALDO_PROVIDERS", default=["linntae"]
+)
 
 #: Colchon de saldo que no se vende, en centavos.
 #:

@@ -111,3 +111,9 @@ Claude outputs/
 
 # URL efimera del tunel de webhooks: cambia en cada arranque.
 .tunel-url
+
+# Borrador del mensaje de commit. Es un archivo de trabajo, no del proyecto:
+# se escribe antes de cada commit y se pasa con `git commit -F m.txt`. Estaba
+# quedando como archivo sin seguimiento en cada bloque, y un aviso de "hay
+# archivos sin commitear" que siempre es falso es un aviso que se deja de leer.
+/m.txt

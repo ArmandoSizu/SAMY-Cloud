@@ -120,10 +120,39 @@ class MecanismoComision(enum.StrEnum):
         Los 34 centavos de diferencia son pequenos y el error es sistematico:
         siempre hace creer que se gana mas. Con 6% el descuento efectivo no es
         600 puntos base sino 566.
+
+    ``COMISION_ACREDITADA_APARTE``
+        El saldo se descuenta al VALOR FACIAL y la comision se abona a un
+        saldo DISTINTO. Es lo que sugiere el esquema de Linntae llamado
+        "COMISION SOBRE VENTA": su consulta de saldo devuelve ``plataforma`` y
+        ``comision`` como dos bolsas separadas.
+
+        Aqui el costo inmediato de una recarga de $100 es $100 completos. La
+        comision existe, pero esta en otra bolsa, y **que esa bolsa sea
+        liquida es una pregunta aparte**: si solo se puede gastar en mas
+        recargas, o si hay minimos o plazos para retirarla, entonces contarla
+        como margen del dia es contar dinero que todavia no se puede usar.
+        Por eso el descuento efectivo INMEDIATO de este mecanismo es cero y
+        la comision se reporta por separado.
+
+    ``SIN_DETERMINAR``
+        Se conoce el porcentaje pero **no como se aplica**, y por tanto no se
+        conoce el costo. Es el estado inicial de un proveedor nuevo, y existe
+        porque el error facil es creer que saber "6%" es saber lo que cuesta
+        una recarga. No lo es: los tres mecanismos de arriba dan tres costos
+        distintos con el mismo 6%.
+
+        Con este mecanismo ``costo()`` devuelve ``None`` aunque ``bp`` este
+        puesto, asi que la cotizacion dice "margen desconocido" en vez de
+        afirmar un numero que nadie ha comprobado. Se resuelve midiendo: se
+        mira el saldo antes y despues de una operacion real y se ve que bolsa
+        se movio y en cuanto.
     """
 
     DESCUENTO_POR_TRANSACCION = "DESCUENTO_POR_TRANSACCION"
     BONO_AL_FONDEAR = "BONO_AL_FONDEAR"
+    COMISION_ACREDITADA_APARTE = "COMISION_ACREDITADA_APARTE"
+    SIN_DETERMINAR = "SIN_DETERMINAR"
 
 
 class PrecioError(Exception):
@@ -255,13 +284,19 @@ class ComisionProveedor:
             )
         # Un descuento del 100% significaria coste cero, que no existe. Un
         # BONO del 100% si es concebible (fondear $100 y recibir $200), asi
-        # que el limite solo aplica al mecanismo de descuento.
+        # que el limite solo aplica a los mecanismos donde el porcentaje se
+        # resta del facial.
         if (
-            self.mecanismo is MecanismoComision.DESCUENTO_POR_TRANSACCION
+            self.mecanismo
+            in (
+                MecanismoComision.DESCUENTO_POR_TRANSACCION,
+                MecanismoComision.COMISION_ACREDITADA_APARTE,
+            )
             and self.bp >= BASE_PUNTOS
         ):
             raise ConfiguracionDePrecioInvalida(
-                "Un descuento por transaccion del 100% o mas daria costo cero."
+                "Una comision sobre venta del 100% o mas no es un descuento: "
+                "significaria que el proveedor regala el producto."
             )
 
     @property
@@ -283,17 +318,52 @@ class ComisionProveedor:
             Con 6% de bono, $5,000 de efectivo producen $5,300 de saldo; cada
             peso de saldo costo 1/1.06 pesos de efectivo.
 
-        El costo se redondea hacia ARRIBA en los dos casos: si hay que
-        equivocarse, que sea contra nosotros y no contra la caja.
+        ``COMISION_ACREDITADA_APARTE``
+            ``costo = facial``
+
+            El saldo se gasta completo y la comision va a otra bolsa. Se
+            consulta con ``comision_acreditada_cents()``.
+
+        ``SIN_DETERMINAR``
+            ``None``, aunque ``bp`` este puesto. Saber el porcentaje no es
+            saber el costo.
+
+        El costo se redondea hacia ARRIBA: si hay que equivocarse, que sea
+        contra nosotros y no contra la caja.
         """
         if self.bp is None:
+            return None
+
+        if self.mecanismo is MecanismoComision.SIN_DETERMINAR:
+            # Deliberado: hay porcentaje pero no se sabe como se aplica, y los
+            # tres mecanismos dan tres costos distintos con el mismo numero.
+            # Devolver cualquiera de ellos seria elegir uno por nosotros.
             return None
 
         if self.mecanismo is MecanismoComision.BONO_AL_FONDEAR:
             return _techo(valor_facial_cents * BASE_PUNTOS, BASE_PUNTOS + self.bp)
 
+        if self.mecanismo is MecanismoComision.COMISION_ACREDITADA_APARTE:
+            return valor_facial_cents
+
         descuento = (valor_facial_cents * self.bp) // BASE_PUNTOS
         return valor_facial_cents - descuento
+
+    def comision_acreditada_cents(self, valor_facial_cents: int) -> int | None:
+        """Comision que el proveedor abona a una bolsa APARTE. ``None`` si no aplica.
+
+        Solo tiene sentido con ``COMISION_ACREDITADA_APARTE``. En los demas
+        mecanismos la comision ya esta dentro del costo y devolverla aqui
+        tambien la contaria dos veces.
+
+        Se redondea hacia ABAJO: un ingreso que el proveedor todavia no ha
+        abonado no se cuenta de mas.
+        """
+        if self.bp is None:
+            return None
+        if self.mecanismo is not MecanismoComision.COMISION_ACREDITADA_APARTE:
+            return None
+        return (valor_facial_cents * self.bp) // BASE_PUNTOS
 
     def descuento_efectivo_bp(self, valor_facial_cents: int = 10_000) -> int | None:
         """Descuento REAL que resulta, en puntos base, sobre un facial dado.
@@ -302,6 +372,10 @@ class ComisionProveedor:
         bono al fondear no son 600 puntos de descuento, son 566. Sin esta
         funcion la unica forma de ver la diferencia seria calcularla a mano
         cada vez que alguien la pusiera en duda.
+
+        Con ``COMISION_ACREDITADA_APARTE`` da **cero**, y eso es correcto: el
+        saldo se gastó completo. La comision esta en otra bolsa y no abarata
+        esta recarga.
         """
         costo = self.costo(valor_facial_cents)
         if costo is None:
@@ -593,6 +667,11 @@ def saldo_por_fondeo(efectivo_cents: int, comision: ComisionProveedor) -> int | 
         raise ValueError("El efectivo fondeado no puede ser negativo.")
     if comision.bp is None:
         return None
+    if comision.mecanismo is MecanismoComision.SIN_DETERMINAR:
+        # Si no se sabe como se aplica la comision, tampoco se sabe si el
+        # fondeo es uno a uno. Devolver el efectivo tal cual seria afirmar
+        # que no hay bono, y eso es una afirmacion que nadie ha comprobado.
+        return None
     if comision.mecanismo is MecanismoComision.BONO_AL_FONDEAR:
         return efectivo_cents + (efectivo_cents * comision.bp) // BASE_PUNTOS
     return efectivo_cents
@@ -607,6 +686,8 @@ def efectivo_para_saldo(saldo_cents: int, comision: ComisionProveedor) -> int | 
     if saldo_cents < 0:
         raise ValueError("El saldo objetivo no puede ser negativo.")
     if comision.bp is None:
+        return None
+    if comision.mecanismo is MecanismoComision.SIN_DETERMINAR:
         return None
     if comision.mecanismo is MecanismoComision.BONO_AL_FONDEAR:
         return _techo(saldo_cents * BASE_PUNTOS, BASE_PUNTOS + comision.bp)
