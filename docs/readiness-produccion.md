@@ -235,8 +235,9 @@ Solo entonces existe un producto vendible, y sigue siendo en sandbox.
 | Separación SANDBOX/PRODUCTION | ✅ **Hecha.** Ver abajo. |
 | Motor de precios / `Cotizacion` | ✅ **Hecho.** `samy_common/pricing.py`, módulo puro, 31 pruebas. Falta que Sizú elija la política y que TAECEL diga su comisión. |
 | CSP en modo `enforce` | ⚠️ Ya estaba en enforce, y Alpine estaba muerto bajo ella. **El flujo de cobro ya está migrado y verificado (4 de 9 plantillas).** Quedan 5, ninguna en el camino del dinero. Ver abajo. |
-| Idempotencia de extremo a extremo | Pendiente. |
-| Conciliación automática | Pendiente. Hay comando documentado, sin ejecutar. |
+| Idempotencia de extremo a extremo | ✅ **Hecha.** Clave por operación, no por petición. Ver abajo. |
+| Control de saldo antes de cobrar | ✅ **Hecho.** En `create_fulfillment`, antes de que exista la orden. |
+| Conciliación de pendientes | ✅ **Hecha, y corregía un bug que reembolsaba de más.** Ver abajo. |
 | Comprobante productivo | Pendiente. |
 | `CENTRO-260905-YKK4` | Orden PAID de $300 sin conciliar. Recomendación escrita; **no ejecutada**. |
 | 8 órdenes CREATED abandonadas | Sin limpiar. |

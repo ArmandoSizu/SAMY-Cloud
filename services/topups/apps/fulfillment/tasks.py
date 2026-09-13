@@ -245,14 +245,59 @@ def reconcile_pending_topups(batch_size: int = 50) -> dict[str, int]:
     ).order_by("created_at")[:batch_size]
 
     for fulfillment in pending:
-        reference = fulfillment.provider_reference or fulfillment.idempotency_key
-        if not reference:
-            still_unknown += 1
-            continue
-
+        # SIEMPRE el proveedor que la ejecuto. Nunca otro.
+        #
+        # Conciliar contra un proveedor distinto del que envio la recarga es
+        # garantia de respuesta equivocada: el segundo no sabe nada de esa
+        # operacion y contestaria "no existe", que aqui significaria FAILED.
+        # Eso es exactamente el failover peligroso que el proyecto prohibe,
+        # entrando por la puerta de atras.
         try:
             provider = get_provider(fulfillment.provider_slug or None)
-            result = provider.get_topup_status(reference)
+        except ProviderError as exc:
+            still_unknown += 1
+            log.warning(
+                "topup_reconciliation_sin_proveedor",
+                fulfillment_id=str(fulfillment.id),
+                provider=fulfillment.provider_slug,
+                error=exc.message,
+            )
+            continue
+
+        # Dos preguntas DISTINTAS, y confundirlas costaba dinero.
+        #
+        # Con folio del proveedor se consulta por folio. Sin folio -que es
+        # justo el caso indeterminado, porque un timeout ocurre ANTES de que
+        # llegue el folio- hay que buscar por NUESTRA referencia.
+        #
+        # Antes este codigo hacia `provider_reference or idempotency_key` y le
+        # pasaba nuestra clave a get_topup_status(), que espera la del
+        # proveedor. Reloadly respondia 404 y su adaptador traduce 404 a
+        # FAILED, con toda la razon: si el proveedor no conoce SU folio, la
+        # recarga no existe. Pero nuestra clave no es su folio, asi que el 404
+        # no significaba nada, y el resultado era marcar como FALLIDA una
+        # recarga que pudo haberse aplicado. Y entonces se reembolsaba al
+        # cliente que si recibio su saldo.
+        try:
+            if fulfillment.provider_reference:
+                result = provider.get_topup_status(fulfillment.provider_reference)
+            else:
+                encontrada = provider.find_by_custom_identifier(
+                    fulfillment.idempotency_key
+                )
+                if encontrada is None:
+                    # None es "no lo se", NO "no existe". Un adaptador que no
+                    # sepa buscar por nuestra referencia deja la recarga en
+                    # revision manual, que es lo correcto: es preferible que
+                    # una persona la mire a que el sistema adivine.
+                    still_unknown += 1
+                    log.info(
+                        "topup_reconciliation_sin_folio_y_sin_hallazgo",
+                        fulfillment_id=str(fulfillment.id),
+                        provider=fulfillment.provider_slug,
+                    )
+                    continue
+                result = encontrada
         except ProviderError as exc:
             still_unknown += 1
             log.warning(
