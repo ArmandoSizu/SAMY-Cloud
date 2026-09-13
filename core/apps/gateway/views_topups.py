@@ -26,6 +26,8 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.audit import services as audit
 from apps.audit.models import AuditAction
 from apps.gateway.clients import payments_client, topups_client
+from apps.gateway.idempotencia import CAMPO as CAMPO_OPERACION
+from apps.gateway.idempotencia import id_de_operacion, nuevo_id_operacion
 from apps.tenancy.permissions import require_perm
 from samy_common.money import Money
 from samy_common.phone import PhoneValidationError, normalize_mx_phone
@@ -213,11 +215,23 @@ def confirm_step(request: HttpRequest) -> HttpResponse:
         )
         return redirect("topups:catalog")
 
+    # El identificador de la operacion se asigna AQUI, al mostrar la pantalla
+    # de confirmacion, y no en la vista que confirma.
+    #
+    # El motivo es una carrera: un doble clic son dos peticiones casi
+    # simultaneas; si el identificador se generara al confirmar, las dos
+    # cargarian la sesion antes de que la primera la guardara, las dos verian
+    # que falta y cada una generaria el suyo. Asignandolo un paso antes -en
+    # esta peticion, que es unica- los dos clics leen el mismo valor.
+    #
+    # Volver atras y cambiar de producto pasa otra vez por aqui y produce un
+    # identificador nuevo, que es lo correcto: es otra intencion de venta.
     request.session["topup_draft"] = {
         **draft,
         "product_id": product_id,
         "product_label": product.get("label", ""),
         "amount_cents": amount.cents,
+        CAMPO_OPERACION: nuevo_id_operacion(),
     }
 
     phone = normalize_mx_phone(draft["phone"])
@@ -265,7 +279,16 @@ def create_order(request: HttpRequest) -> HttpResponse:
         return redirect("topups:catalog")
 
     store = request.store
-    idem = uuid.uuid4().hex
+
+    # Clave por OPERACION, no por peticion. Antes era uuid.uuid4() en cada
+    # POST, asi que un doble clic creaba DOS recargas y DOS ordenes. Ninguna
+    # se cobraba dos veces -las dos nacen sin pagar- pero quedaban ordenes
+    # huerfanas y el cajero podia acabar pagando la que no era.
+    idem = id_de_operacion(
+        request,
+        "topup_draft",
+        partes=(store.id, draft["product_id"], draft["phone"], draft["amount_cents"]),
+    )
 
     try:
         fulfillment = topups_client().post(

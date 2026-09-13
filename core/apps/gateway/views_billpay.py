@@ -29,6 +29,8 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.audit import services as audit
 from apps.audit.models import AuditAction
 from apps.gateway.clients import billpay_client, payments_client
+from apps.gateway.idempotencia import CAMPO as CAMPO_OPERACION
+from apps.gateway.idempotencia import id_de_operacion, nuevo_id_operacion
 from apps.tenancy.permissions import require_perm
 from samy_common.money import Money
 from samy_common.providers.exceptions import ProviderError, ProviderNotConfigured
@@ -141,11 +143,15 @@ def inquire(request: HttpRequest, biller_id: uuid.UUID) -> HttpResponse:
             status=422,
         )
 
+    # Identificador de la operacion asignado AQUI, un paso antes de confirmar.
+    # Ver la nota de apps/gateway/idempotencia.py: generarlo en la vista que
+    # confirma reabre la carrera del doble clic.
     request.session["billpay_draft"] = {
         "biller_id": str(biller_id),
         "biller_name": biller.get("name", ""),
         "reference": inquiry.get("reference", reference),
         "amount_cents": inquiry.get("amount_due_cents", 0),
+        CAMPO_OPERACION: nuevo_id_operacion(),
     }
 
     return render(
@@ -166,7 +172,14 @@ def create_order(request: HttpRequest) -> HttpResponse:
         return redirect("billpay:catalog")
 
     store = request.store
-    idem = uuid.uuid4().hex
+
+    # Clave por OPERACION, no por peticion. Antes era uuid.uuid4() en cada
+    # POST: dos clics creaban dos pagos de recibo y dos ordenes.
+    idem = id_de_operacion(
+        request,
+        "billpay_draft",
+        partes=(store.id, draft["biller_id"], draft["reference"], draft["amount_cents"]),
+    )
 
     try:
         fulfillment = billpay_client().post(

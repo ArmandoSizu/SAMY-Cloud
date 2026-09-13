@@ -26,6 +26,7 @@ from apps.gateway.clients import (
     payments_client_cobro,
     topups_client,
 )
+from apps.gateway.idempotencia import clave as idem_clave
 from apps.tenancy.permissions import require_perm, user_has_perm
 from samy_common.money import Money
 from samy_common.providers.exceptions import ProviderError, ProviderNotConfigured
@@ -103,7 +104,14 @@ def pay_cash(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
             status=422,
         )
 
-    idem = uuid.uuid4().hex
+    # La clave identifica la OPERACION, no la peticion. Para un cobro en
+    # efectivo la operacion ES la orden: una orden se cobra una sola vez.
+    #
+    # Antes esto era uuid.uuid4() por peticion, lo que significaba que dos
+    # clics producian dos claves distintas y la deduplicacion del servicio de
+    # Pagos no podia hacer su trabajo. El importe entregado va en el cuerpo, y
+    # samy_common.idempotency guarda su hash: si llega la misma clave con otro
+    # importe, responde 422 en vez de cobrar otra vez.
     try:
         # Se inicia el cobro en efectivo y se confirma en el mismo paso: el
         # cajero ya tiene el dinero en la mano.
@@ -114,7 +122,7 @@ def pay_cash(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
                 "actor_id": str(request.user.id),
                 "method": "CASH",
             },
-            idempotency_key=f"pay-{idem}",
+            idempotency_key=idem_clave("pay", order_id),
         )
         confirmed = payments_client().post(
             f"/api/v1/orders/{order_id}/confirm-cash/",
@@ -123,7 +131,7 @@ def pay_cash(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
                 "actor_id": str(request.user.id),
                 "amount_tendered_cents": tendered.cents,
             },
-            idempotency_key=f"cash-{idem}",
+            idempotency_key=idem_clave("cash", order_id),
         )
         result = confirmed.data or {}
     except ProviderNotConfigured as exc:
