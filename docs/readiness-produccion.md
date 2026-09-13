@@ -17,8 +17,8 @@ lo que este archivo existe para evitar.
 
 | Bandera | Valor | Verificado |
 |---|---|---|
-| `TAECEL_REGISTERED` | **TRUE** | Cuenta creada y activa. Titular: quien será el titular fiscal/comercial de la integración. |
-| `TAECEL_API_REQUESTED` | **PENDING** | Levantamiento tecnológico a `cc@taecel.com`. |
+| `TAECEL_REGISTERED` | **TRUE** | Cuenta creada y activa. Titular comercial/fiscal: **Johany Josefina Palomino Carrillo**. |
+| `TAECEL_API_REQUESTED` | **TRUE** | Ticket de integración API / Web Service enviado a Soporte TAECEL. Esperando documentación y credenciales de pruebas. |
 | `TAECEL_CREDENTIALS_RECEIVED` | FALSE | — |
 | `TAECEL_CONTRACT_VERIFIED` | FALSE | Nadie ha leído todavía la documentación real de su web service. |
 | `TAECEL_FUNDED` | FALSE | No se ha comprado saldo. |
@@ -38,14 +38,24 @@ mapping de proveedor aprobado. Eso es correcto, no es un defecto.
 
 Los dos bloqueos son de terceros. Ninguno se resuelve escribiendo código.
 
-### 1. TAECEL — acceso API
+### 1. TAECEL — acceso API (ticket ya enviado, esperando respuesta)
 
 El flujo es: levantamiento tecnológico → revisión de un ingeniero suyo →
 credenciales de prueba → verificación → credenciales de producción.
 
-**No publican SLA para ninguno de los dos pasos humanos.** El "máximo 24
-horas" que aparece en su sitio corresponde a *distribuidor de red de
-afiliados*, que es otro producto.
+**Estado: ticket enviado a Soporte.** Lo que falta ya no está de nuestro lado:
+es su revisión de ingeniería. **No publican SLA para ninguno de los dos pasos
+humanos**; el "máximo 24 horas" de su sitio corresponde a *distribuidor de red
+de afiliados*, que es otro producto.
+
+Lo que tiene que llegar de ellos, y sin lo cual nada avanza:
+
+1. La documentación del web service (URL base, rutas, parámetros, códigos de
+   error). **Nada de eso es público** — ver «Las tres cerraduras» abajo.
+2. `TAECEL_KEY` y `TAECEL_NIP` de pruebas.
+3. **La comisión que nos conceden.** No la publican, y es el dato que decide
+   si una recarga con tarjeta gana o pierde dinero. Ver la tabla de abajo:
+   el punto de equilibrio está en **7.42%** para una recarga de $100.
 
 Correo oficial confirmado: `cc@taecel.com`. (Su PDF de levantamiento dice
 `integraciones@taecel.com`; sus dos documentos se contradicen.)
@@ -74,13 +84,47 @@ publicada** ("pregúntanos por el porcentaje"). Si esa comisión es menor a
 
 Tres salidas legítimas, todas decisión de Sizú:
 
-1. Recargas solo en efectivo; tarjeta para otros productos.
-2. Una cuota de servicio **uniforme en todos los métodos de pago** (no es un
-   recargo por tarjeta, y por eso no está prohibida).
-3. Absorber el costo.
+1. `SOLO_EFECTIVO` — recargas solo en efectivo; tarjeta para otros productos.
+2. `CUOTA_UNIFORME` — una cuota de servicio **idéntica en todos los métodos de
+   pago**. No es un recargo por tarjeta porque quien paga en efectivo paga
+   exactamente lo mismo, y por eso no está prohibida.
+3. `ABSORBER` — el negocio se come el costo.
 
-**Pendiente de decisión.** El motor de precios está construido para soportar
-las tres sin cambiar código, pero no elige por su cuenta.
+**Pendiente de decisión.** El motor de precios soporta las tres sin cambiar
+código y **no elige por su cuenta**: sin política configurada no cotiza.
+
+### La tabla que responde la pregunta
+
+Calculada con el motor (`samy_common/pricing.py`, 31 pruebas en verde) sobre
+la tarifa real de Conekta (3.4% + $3 + IVA). «Cuota» es la cuota uniforme
+mínima con la que la venta **no pierde dinero al cobrarse con tarjeta**:
+
+| Comisión TAECEL | $100 | $200 | $500 |
+|---|---|---|---|
+| 3% | $4.61 | $5.60 | $8.55 |
+| 4% | $3.58 | $3.51 | $3.34 |
+| 5% | $2.53 | $1.43 | **$0** (+$1.80) |
+| 6% | $1.50 | **$0** (+$0.63) | **$0** (+$6.80) |
+| **7.42%** | **$0** (equilibrio exacto) | **$0** (+$3.47) | **$0** (+$13.90) |
+| 10% | **$0** (+$2.57) | **$0** (+$8.63) | **$0** (+$26.80) |
+
+Tres lecturas que cambian la decisión:
+
+- **El punto de equilibrio es 7.42% a $100.** Por encima de eso no hace falta
+  cuota ninguna: la tarjeta ya es rentable sola.
+- **Las denominaciones grandes perdonan mucho más.** A $500 basta con ~4.6%.
+  Si la comisión de TAECEL queda entre 5% y 7%, una salida es vender $100 solo
+  en efectivo y aceptar tarjeta desde $200.
+- **La cuota también paga comisión.** Subirla un peso no deja un peso de
+  margen, porque Conekta cobra su porcentaje sobre el total. Por eso la cuota
+  de equilibrio no es «el costo»: se resuelve, no se suma.
+
+Con cuota uniforme el cliente paga lo mismo en ambos métodos y lo que cambia
+es el margen: con 5% y cuota de $2.53, el cliente paga $102.53 siempre, y el
+negocio gana $7.53 en efectivo y $0.00 con tarjeta.
+
+**Nada de esto se puede cerrar hasta que TAECEL diga su porcentaje.** Es el
+tercer dato de la lista del bloqueo 1, y conviene pedirlo en el mismo hilo.
 
 ---
 
@@ -169,7 +213,7 @@ Solo entonces existe un producto vendible, y sigue siendo en sandbox.
 | Pendiente | Estado |
 |---|---|
 | Separación SANDBOX/PRODUCTION | ✅ **Hecha.** Ver abajo. |
-| Motor de precios / objeto `Quote` | Bloqueado por la decisión de política de comisión (arriba). |
+| Motor de precios / `Cotizacion` | ✅ **Hecho.** `samy_common/pricing.py`, módulo puro, 31 pruebas. Falta que Sizú elija la política y que TAECEL diga su comisión. |
 | CSP en modo `enforce` | Pendiente. Alpine 3.14.9 usa `new Function()`; hay que elegir entre `@alpinejs/csp` o quitar Alpine del flujo crítico. |
 | Idempotencia de extremo a extremo | Pendiente. |
 | Conciliación automática | Pendiente. Hay comando documentado, sin ejecutar. |
