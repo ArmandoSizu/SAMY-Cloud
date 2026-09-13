@@ -99,7 +99,7 @@ idempotencia antes de decidir.
 | Proveedor | Sandbox self-service | Estado |
 |---|---|---|
 | **Reloadly** | ✅ Sí, gratis, mismo día | 🔧 Adaptador listo, faltan llaves |
-| **Taecel** | ❌ Requiere contrato | ⏸ `PENDING_CONTRACT` |
+| **TAECEL** | ⏸ Cuenta registrada, API en trámite | ⏸ `PENDING_CONTRACT` |
 
 `taecel.py` existe y **no llama a endpoints supuestos**: sus métodos levantan
 `ProviderNotConfigured` con la lista exacta de lo que falta. Escribir un cliente contra

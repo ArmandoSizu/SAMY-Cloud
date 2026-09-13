@@ -92,6 +92,19 @@ class TopupRequest:
     #: comprobarlo en su documentacion. Reloadly NO lo garantiza.
     idempotency_key: str
 
+    #: ``True`` cuando el importe ya viene dentro de ``product_id`` (el SKU es
+    #: "Amigo Sin Limite $100") y por tanto NO debe mandarse por separado.
+    #:
+    #: No es un detalle de estilo. Hay proveedores que, al recibir SKU de
+    #: denominacion fija y monto a la vez, ignoran uno de los dos en silencio:
+    #: se cobra una cosa y se entrega otra. Quien sabe la respuesta es el
+    #: mapping verificado del catalogo, no el adaptador, y por eso viaja aqui
+    #: en vez de adivinarse en cada proveedor.
+    #:
+    #: Por omision ``False`` (mandar el monto) porque es lo que espera
+    #: Reloadly, el unico proveedor implementado hoy.
+    amount_in_sku: bool = False
+
 
 @dataclass(frozen=True, slots=True)
 class TopupResult:

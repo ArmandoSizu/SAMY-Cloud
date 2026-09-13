@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env()
@@ -155,9 +156,46 @@ RELOADLY_MODE = env.str("RELOADLY_MODE", default="SANDBOX")
 RELOADLY_CLIENT_ID = env.str("RELOADLY_CLIENT_ID", default="")
 RELOADLY_CLIENT_SECRET = env.str("RELOADLY_CLIENT_SECRET", default="")
 
-TAECEL_MODE = env.str("TAECEL_MODE", default="SANDBOX")
+# TAECEL: cuenta REGISTRADA y activa (13/09/2026), acceso API en tramite.
+# Ver docs/readiness-produccion.md y services/topups/apps/providers/taecel.py.
+#
+# Dos nombres para el ambiente, y eso es un riesgo: TAECEL_ENV es el canonico
+# y TAECEL_MODE queda como alias historico. Si ambos estan puestos y NO
+# coinciden, el arranque falla en vez de elegir uno. Un servicio que arranca
+# "adivinando" si apunta a sandbox o a produccion es como se acaba mandando
+# recargas reales creyendo que son de prueba.
+_TAECEL_ENV = env.str("TAECEL_ENV", default="").strip().upper()
+_TAECEL_MODE_ALIAS = env.str("TAECEL_MODE", default="").strip().upper()
+
+if _TAECEL_ENV and _TAECEL_MODE_ALIAS and _TAECEL_ENV != _TAECEL_MODE_ALIAS:
+    raise ImproperlyConfigured(
+        f"TAECEL_ENV={_TAECEL_ENV} y TAECEL_MODE={_TAECEL_MODE_ALIAS} se "
+        "contradicen. Deja solo TAECEL_ENV (es el nombre canonico) para que no "
+        "haya duda de contra que ambiente opera TAECEL."
+    )
+
+#: SANDBOX ante ausencia o ante cualquier valor no reconocido. Fail-closed.
+TAECEL_ENV = _TAECEL_ENV or _TAECEL_MODE_ALIAS or "SANDBOX"
+#: Alias que sigue leyendo el registro. Mismo valor, siempre.
+TAECEL_MODE = TAECEL_ENV
+
+#: URL del web service. **Sin valor por omision.** TAECEL no la publica: la
+#: entrega junto con las credenciales. Vacia => el adaptador no opera.
+TAECEL_BASE_URL = env.str("TAECEL_BASE_URL", default="")
 TAECEL_KEY = env.str("TAECEL_KEY", default="")
 TAECEL_NIP = env.str("TAECEL_NIP", default="")
+
+#: Firma humana: alguien leyo el manual real de TAECEL y confirmo que las
+#: rutas y los campos del adaptador coinciden. Mientras sea False, TAECEL
+#: reporta PENDING_CONTRACT aunque haya credenciales completas.
+TAECEL_CONTRACT_VERIFIED = env.bool("TAECEL_CONTRACT_VERIFIED", default=False)
+
+#: Rutas. Las dos primeras traen un valor por omision SIN CONFIRMAR; las dos
+#: ultimas no traen ninguno porque no se conoce su nombre.
+TAECEL_PATH_REQUEST_TXN = env.str("TAECEL_PATH_REQUEST_TXN", default="RequestTXN")
+TAECEL_PATH_STATUS_TXN = env.str("TAECEL_PATH_STATUS_TXN", default="StatusTXN")
+TAECEL_PATH_BALANCE = env.str("TAECEL_PATH_BALANCE", default="")
+TAECEL_PATH_PRODUCTS = env.str("TAECEL_PATH_PRODUCTS", default="")
 
 #: Cada cuanto se refresca el catalogo. Un catalogo viejo puede ofrecer
 #: paquetes que el operador ya retiro.

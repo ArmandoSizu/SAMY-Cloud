@@ -151,6 +151,12 @@ Adaptador: `services/topups/apps/providers/reloadly.py`
 
 ### Qué falta para Taecel
 
+> **Estado al 13/09/2026:** la cuenta ya está creada y activa
+> (`TAECEL_REGISTERED = TRUE`); lo que falta es el acceso API
+> (`TAECEL_API_REQUESTED = PENDING`). El estado consolidado y el orden exacto
+> de los pasos están en [`readiness-produccion.md`](readiness-produccion.md),
+> que manda sobre este archivo si se contradicen.
+
 1. Alta como distribuidor en https://taecel.com/portal/integracion-web-services
 2. Completar el levantamiento tecnológico que envían por correo
 3. Recibir la documentación oficial del web service (**no es pública**)

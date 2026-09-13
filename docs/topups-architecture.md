@@ -198,3 +198,86 @@ administracion con "Sin proveedor operativo".
 
 Para que dejen de estar bloqueados hace falta el proveedor comercial. Ver
 `docs/proveedores-recargas-mexico.md`.
+
+
+---
+
+## Del catálogo del proveedor al catálogo de venta
+
+Hay **tres** catálogos, no dos, y confundirlos es el error que esta sección
+existe para prevenir.
+
+```
+  apps.catalog                  Lo que el proveedor sabe vender hoy.
+        |                       Se llena solo. Puede decir "$89.85".
+        |
+  ProviderCatalogItem           FOTOGRAFÍA del catálogo del proveedor.
+        |                       Familia + nombre + SKU + importe, con fecha.
+        |                       Evidencia para poder revisar un mapping.
+        |
+  ProviderProductMapping        El puente. Nace SIEMPRE deshabilitado.
+        |                       Lo aprueba una persona, no el emparejador.
+        |
+  CommercialProduct             Lo que SAMY Cloud vende, como lo pide el
+                                cliente: "un Amigo Sin Límite de $100".
+```
+
+### La regla del emparejamiento
+
+    UN MAPPING POR PRECIO NO ES UN MAPPING.
+
+Una coincidencia exige las **cuatro** partes de la identidad:
+
+    operador + familia + código/SKU + importe
+
+El caso real que lo justifica: Telcel vende, con la misma marca y el mismo
+precio de $100, cosas distintas según sea *recarga de saldo* o *paquete Amigo
+Sin Límite*. Un emparejador que compare importes elige el equivocado, el
+cliente paga una cosa y recibe otra, y el dinero ya se movió.
+
+Las tres primeras partes se comparan **por nombre, no por parecido**. No hay
+distancia de edición ni «contiene». Cuando el proveedor llama distinto a una
+familia, hace falta un alias que **escribe una persona** en
+`CommercialFamily.provider_aliases`. Sin alias no se adivina: el reporte dice
+`FAMILIA_NO_RECONOCIDA` y nombra las familias que el proveedor sí declara.
+
+### Los dos comandos
+
+```bash
+# 1. Traer el catálogo real del proveedor. Falla si el proveedor no está
+#    operativo, y entonces NO escribe una sola fila.
+manage.py importar_catalogo_proveedor --proveedor taecel [--seco]
+
+# 2. Proponer mappings. En seco por omisión.
+manage.py emparejar_catalogo_proveedor --proveedor taecel [--guardar]
+```
+
+El reporte del segundo trae una línea que conviene leer siempre:
+
+```
+  Amigo Sin Limite 100  -> SL100  [Amigo Sin Limite / Amigo Sin Limite 100]
+      por precio habría elegido también: TAE100, PIA100
+```
+
+Esos son los SKUs que un emparejador por importe habría aceptado. Verlos es lo
+que convierte la regla en algo evidente en vez de una norma que alguien
+relajará el día que tenga prisa.
+
+### Lo que ninguno de los dos comandos puede hacer
+
+Volver vendible un producto. `guardar()` escribe `enabled=False` y
+`status=REVIEW_REQUIRED`, y hay una prueba
+(`GuardarNoAutoriza.test_el_producto_sigue_sin_ser_vendible`) que falla si eso
+cambia. La autorización es un acto humano en el panel de plataforma,
+comparando nuestra fila con la del proveedor.
+
+### Cuando el proveedor cambia algo
+
+`ProviderCatalogItem.fingerprint` es la huella de la identidad, no de la fila
+entera: si incluyera `raw`, cualquier campo decorativo que el proveedor
+agregara marcaría todos los mappings para revisión y la señal se volvería
+ruido. Si la huella cambia, los mappings que dependían de ese SKU pasan a
+`REVIEW_REQUIRED` y dejan de vender. **No se actualizan solos.**
+
+Un producto que el proveedor deja de traer se marca `active=False`, no se
+borra: una fila retirada sigue explicando por qué un mapping dejó de servir.

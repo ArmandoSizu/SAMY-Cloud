@@ -56,6 +56,7 @@ entregar. Se calcula siempre, contra el estado real del momento.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 
 from django.core.validators import MinValueValidator
@@ -137,8 +138,22 @@ class CommercialOperator(models.Model):
     is_primary = models.BooleanField(default=False)
     active = models.BooleanField(default=True, db_index=True)
 
+    #: Como llama cada proveedor a este operador. Mismo criterio que en
+    #: ``CommercialFamily.provider_aliases``: se llena a mano, y sin alias no
+    #: se empareja por parecido.
+    provider_aliases = models.JSONField(default=dict, blank=True)
+
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def alias_de(self, provider_slug: str) -> tuple[str, ...]:
+        """Nombres que usa ese proveedor para este operador, mas los nuestros."""
+        crudos = self.provider_aliases.get(provider_slug) or []
+        if isinstance(crudos, str):
+            crudos = [crudos]
+        nombres = [str(x).strip().upper() for x in crudos if str(x).strip()]
+        nombres.extend([self.name.strip().upper(), self.code.strip().upper()])
+        return tuple(dict.fromkeys(nombres))
 
     class Meta:
         verbose_name = "Operador comercial"
@@ -172,8 +187,31 @@ class CommercialFamily(models.Model):
     display_priority = models.PositiveSmallIntegerField(default=100)
     active = models.BooleanField(default=True, db_index=True)
 
+    #: Como llama cada proveedor a esta familia: ``{"taecel": ["Amigo Sin
+    #: Limite", "AMIGO SL"], "reloadly": [...]}``.
+    #:
+    #: Se llena A MANO, leyendo el catalogo del proveedor. Vacio por omision
+    #: porque hoy no conocemos los nombres de TAECEL: su catalogo llega con
+    #: las credenciales. Adivinar un alias es adivinar que producto se entrega.
+    #:
+    #: Sin alias, el emparejador NO empareja por parecido: reporta "familia no
+    #: reconocida" y pide que una persona agregue el alias. Preferimos un
+    #: mapping que falta a un mapping equivocado.
+    provider_aliases = models.JSONField(default=dict, blank=True)
+
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def alias_de(self, provider_slug: str) -> tuple[str, ...]:
+        """Nombres que usa ese proveedor para esta familia. Incluye los nuestros."""
+        crudos = self.provider_aliases.get(provider_slug) or []
+        if isinstance(crudos, str):
+            crudos = [crudos]
+        nombres = [str(x).strip().upper() for x in crudos if str(x).strip()]
+        # El nombre y el codigo propios cuentan como alias: si el proveedor
+        # resulta llamarlo igual que nosotros, no hace falta configurar nada.
+        nombres.extend([self.name.strip().upper(), self.code.strip().upper()])
+        return tuple(dict.fromkeys(nombres))
 
     class Meta:
         verbose_name = "Familia comercial"
@@ -423,6 +461,32 @@ class ProviderProductMapping(models.Model):
         max_length=16, choices=Environment.choices, db_index=True
     )
 
+    # -- IDENTIDAD EXACTA ---------------------------------------------------
+    # Un mapping por precio es la trampa clasica de este dominio: "los dos
+    # dicen $100, debe ser el mismo". No lo es. Telcel vende con el mismo
+    # precio y la misma marca dos cosas distintas segun sea recarga o paquete,
+    # y un mapping por importe manda al cliente el producto equivocado
+    # cobrandole el correcto.
+    #
+    # Por eso se guarda como nombra el PROVEEDOR a las cuatro partes de la
+    # identidad. Sirven para dos cosas: que una persona pueda revisar el
+    # mapping sin abrir el portal del proveedor, y que la sincronizacion
+    # detecte cuando algo cambio.
+    #: Familia/producto tal como lo nombra el proveedor.
+    provider_family = models.CharField(max_length=120, blank=True, default="")
+    #: Nombre del producto tal como lo nombra el proveedor.
+    provider_product_name = models.CharField(max_length=200, blank=True, default="")
+    #: Importe que declara el proveedor, en centavos. ``None`` = monto libre.
+    provider_amount_cents = models.BigIntegerField(null=True, blank=True)
+
+    #: ``True`` cuando el importe ya viene dentro del SKU y por tanto NO debe
+    #: mandarse como parametro aparte. Viaja al adaptador en cada recarga.
+    #:
+    #: Lo decide esta tabla y no el adaptador porque es un hecho del producto,
+    #: no del proveedor: hay proveedores que aceptan las dos formas y que al
+    #: recibir ambas ignoran una en silencio.
+    amount_in_sku = models.BooleanField(default=False)
+
     enabled = models.BooleanField(default=False, db_index=True)
     status = models.CharField(
         max_length=24,
@@ -463,15 +527,44 @@ class ProviderProductMapping(models.Model):
         )
 
     @property
+    def identidad_completa(self) -> bool:
+        """Las cuatro partes de la identidad estan presentes.
+
+        Un mapping sin SKU no se puede ejecutar, y uno sin familia ni nombre
+        del proveedor no se puede REVISAR: quien lo audite manana no tendria
+        con que comparar. El importe puede faltar legitimamente (monto libre),
+        pero entonces ``amount_in_sku`` tiene que ser False, porque un SKU que
+        supuestamente lleva el importe dentro y no declara cual es una
+        contradiccion.
+        """
+        if not (
+            self.provider_product_id
+            and self.provider_family
+            and self.provider_product_name
+        ):
+            return False
+        if self.amount_in_sku and self.provider_amount_cents is None:
+            return False
+        return True
+
+    @property
     def es_utilizable(self) -> bool:
-        """Habilitado y sin observaciones. NO dice nada del proveedor.
+        """Habilitado, sin observaciones y con identidad completa.
 
         Que el mapping este bien no significa que el proveedor responda. Esas
         son dos condiciones distintas y se comprueban por separado a
         proposito: confundirlas es como acaba uno cobrando contra una API
         caida.
+
+        La identidad completa se exige aqui y no solo al crear el mapping
+        porque una fila se puede editar despues, a mano o por migracion, y
+        este es el punto por el que pasa toda venta.
         """
-        return self.enabled and self.status == MappingStatus.OK
+        return (
+            self.enabled
+            and self.status == MappingStatus.OK
+            and self.identidad_completa
+        )
 
     def marcar_para_revision(self, motivo: str) -> None:
         """Saca el mapping de circulacion sin borrar nada.
@@ -483,3 +576,102 @@ class ProviderProductMapping(models.Model):
         self.status = MappingStatus.REVIEW_REQUIRED
         self.status_reason = motivo[:200]
         self.save(update_fields=["status", "status_reason", "updated_at"])
+
+
+class ProviderCatalogItem(models.Model):
+    """El catalogo del proveedor, tal como lo devolvio, guardado.
+
+    Es una FOTOGRAFIA, no una fuente de verdad comercial. Existe por tres
+    razones concretas:
+
+    1. **Proponer mappings sin adivinar.** Para emparejar "Amigo Sin Limite
+       $100" con un SKU hace falta ver la lista del proveedor completa, con
+       familia, nombre e importe. Si eso solo existe en una respuesta HTTP de
+       hace un rato, el emparejamiento se hace de memoria.
+
+    2. **Poder revisar.** Un mapping se aprueba comparando dos filas. Esta es
+       la del proveedor, y queda escrita con la fecha en que se vio.
+
+    3. **Detectar cambios.** Si la siguiente importacion trae otro importe o
+       otro nombre para el mismo SKU, se ve aqui y los mappings que dependian
+       de esa fila pasan a revision.
+
+    Lo que esta tabla NO hace: volverse vendible. Nada de aqui llega al cajero
+    sin pasar por un ``CommercialProduct`` con mapping aprobado por una
+    persona. Un catalogo de proveedor promovido solo a catalogo de venta es
+    exactamente como se acaba ofreciendo "$89.85" en un mostrador.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    provider_slug = models.CharField(max_length=40, db_index=True)
+    environment = models.CharField(
+        max_length=16, choices=Environment.choices, db_index=True
+    )
+
+    #: SKU/codigo del proveedor. Es lo que viaja en la peticion de recarga.
+    provider_product_id = models.CharField(max_length=128)
+    #: Operador segun el proveedor. Sin normalizar: se guarda su palabra.
+    provider_operator = models.CharField(max_length=120, blank=True, default="")
+    provider_family = models.CharField(max_length=120, blank=True, default="")
+    provider_product_name = models.CharField(max_length=200, blank=True, default="")
+
+    #: Importe en centavos. ``None`` cuando el producto es de monto libre.
+    amount_cents = models.BigIntegerField(null=True, blank=True)
+    currency = models.CharField(max_length=3, default="MXN")
+    #: Si el importe ya va dentro del SKU y no se manda por separado.
+    amount_in_sku = models.BooleanField(default=False)
+
+    #: La respuesta cruda del proveedor para esta fila. Es la evidencia.
+    raw = models.JSONField(default=dict, blank=True)
+    #: Huella de los campos de identidad. Cambia => hay que revisar.
+    fingerprint = models.CharField(max_length=128, blank=True, default="")
+
+    #: ``False`` cuando una importacion posterior ya no lo trajo. No se borra:
+    #: un producto retirado sigue explicando por que un mapping dejo de servir.
+    active = models.BooleanField(default=True, db_index=True)
+
+    first_seen_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Producto de proveedor"
+        verbose_name_plural = "Productos de proveedor"
+        ordering = ["provider_slug", "environment", "provider_product_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider_slug", "environment", "provider_product_id"],
+                name="producto_proveedor_unico_por_sku_y_ambiente",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["provider_slug", "environment", "active"]),
+            models.Index(fields=["provider_operator", "amount_cents"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider_slug}:{self.provider_product_id} ({self.environment})"
+
+    @property
+    def amount(self) -> Money | None:
+        if self.amount_cents is None:
+            return None
+        return Money(self.amount_cents, self.currency)
+
+    def calcular_fingerprint(self) -> str:
+        """Huella de la IDENTIDAD, no de la fila entera.
+
+        Solo entran los campos cuyo cambio invalida un mapping. Si se incluyera
+        ``raw``, cualquier campo decorativo que el proveedor agregue marcaria
+        todos los mappings para revision y la senal se volveria ruido.
+        """
+        partes = "|".join(
+            [
+                self.provider_operator.strip().upper(),
+                self.provider_family.strip().upper(),
+                self.provider_product_name.strip().upper(),
+                str(self.amount_cents),
+                str(self.amount_in_sku),
+            ]
+        )
+        return hashlib.sha256(partes.encode("utf-8")).hexdigest()[:64]

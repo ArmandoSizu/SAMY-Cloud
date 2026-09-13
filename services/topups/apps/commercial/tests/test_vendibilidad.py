@@ -61,10 +61,16 @@ class BaseCatalogo(TestCase):
             data_mb=1536,
             is_current=True,
         )
+        # Identidad completa: un mapping aprobado de verdad la tiene siempre.
+        # Sin ella ``es_utilizable`` es False a proposito (ver el modelo).
         self.mapping = ProviderProductMapping.objects.create(
             product=self.producto,
             provider_slug="reloadly",
             provider_product_id="12345",
+            provider_family="Amigo Sin Limite",
+            provider_product_name="Amigo Sin Limite 100",
+            provider_amount_cents=10000,
+            amount_in_sku=True,
             environment=Environment.SANDBOX,
             enabled=True,
             status=MappingStatus.OK,

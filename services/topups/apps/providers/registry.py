@@ -44,8 +44,17 @@ def get_provider(slug: str | None = None) -> "TopupProvider":
 
     if slug == "taecel":
         return provider_cls(  # type: ignore[return-value]
-            taecel.TaecelConfig(key=settings.TAECEL_KEY, nip=settings.TAECEL_NIP),
-            _mode(settings.TAECEL_MODE),
+            taecel.TaecelConfig(
+                base_url=settings.TAECEL_BASE_URL,
+                key=settings.TAECEL_KEY,
+                nip=settings.TAECEL_NIP,
+                contract_verified=settings.TAECEL_CONTRACT_VERIFIED,
+                path_request_txn=settings.TAECEL_PATH_REQUEST_TXN,
+                path_status_txn=settings.TAECEL_PATH_STATUS_TXN,
+                path_balance=settings.TAECEL_PATH_BALANCE,
+                path_products=settings.TAECEL_PATH_PRODUCTS,
+            ),
+            _mode(settings.TAECEL_ENV),
         )
 
     raise NotImplementedError(  # pragma: no cover

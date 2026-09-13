@@ -125,7 +125,7 @@ Investigación verificada (septiembre 2026). Detalle completo en
 | **Conekta** | Cobro con tarjeta | ✅ Conectado y verificado | **SANDBOX** — no mueve dinero real |
 | **Efectivo en mostrador** | Cobro en efectivo | ✅ Operativo | real |
 | **Reloadly** | Recargas (laboratorio) | ✅ Conectado y verificado | **SANDBOX** — no llega a teléfonos reales |
-| **Taecel** | Recargas (comercial MX) | ⏸ Pendiente de contrato | — |
+| **TAECEL** | Recargas (comercial MX) | ⏸ Cuenta registrada · API pendiente | [readiness](docs/readiness-produccion.md) |
 | **tapi / Arcus** | CFE, agua | ⏸ Pendiente de contrato | — |
 
 ### Flujo comprobado de extremo a extremo
