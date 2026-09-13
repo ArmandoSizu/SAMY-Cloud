@@ -22,7 +22,10 @@ lo que este archivo existe para evitar.
 | `TAECEL_TECH_SURVEY_SENT` | **TRUE** | Levantamiento tecnológico entregado. |
 | `TAECEL_PENDING_TEST_CREDENTIALS` | **TRUE** | **Confirmado por Soporte:** la revisión y entrega de credenciales de prueba tarda **tiempo variable según su carga de trabajo**. No hay SLA. |
 | `TAECEL_CREDENTIALS_RECEIVED` | FALSE | — |
-| `TAECEL_FUNDING_MINIMUM` | **$5,000 MXN** | **Confirmado por Soporte:** las claves productivas exigen una primera compra/fondeo desde $5,000. **No fondear todavía** — va después de aprobar las pruebas. |
+| `TAECEL_FUNDING_MINIMUM` | **$5,000 MXN** | **Confirmado por Soporte:** las claves productivas exigen una primera compra/fondeo desde $5,000. **No fondear todavía** — va después de aprobar las pruebas. En negociación una excepción para un piloto de ~$500; **no aprobada**. |
+| `TAECEL_COMMISSION_KNOWN` | **TRUE** | Confirmado por Soporte. |
+| `TAECEL_BONUS_BPS` | **600** (6%) | Aplica a Telcel, Movistar, AT&T, Unefon, y Telcel Amigo Sin Límite $100 y $200. |
+| `TAECEL_COMMISSION_MECHANISM` | **`BONUS_ON_FUNDING`** | **No es un rebate por transacción.** Fondear $5,000 → $5,300 de saldo. El descuento efectivo es **5.66%**, no 6%. Ver abajo. |
 | `TAECEL_CONTRACT_VERIFIED` | FALSE | Nadie ha leído todavía la documentación real de su web service. |
 | `TAECEL_FUNDED` | FALSE | No se ha comprado saldo. |
 | `CONEKTA_SANDBOX` | TRUE | Operando. Órdenes y webhooks reales de sandbox. |
@@ -70,12 +73,18 @@ su lado.
 
 Lo que tiene que llegar de ellos, y sin lo cual nada avanza:
 
-1. La documentación del web service (URL base, rutas, parámetros, códigos de
-   error). **Nada de eso es público** — ver «Las tres cerraduras» abajo.
-2. `TAECEL_KEY` y `TAECEL_NIP` de pruebas.
-3. **La comisión que nos conceden.** No la publican, y es el dato que decide
-   si una recarga con tarjeta gana o pierde dinero. Ver la tabla de abajo:
-   el punto de equilibrio está en **7.42%** para una recarga de $100.
+1. La documentación oficial del web service (URL base, rutas, parámetros,
+   códigos de error). **Nada de eso es público** — ver «Las tres cerraduras».
+2. Credenciales TEST (`TAECEL_KEY`, `TAECEL_NIP`).
+3. `TAECEL_BASE_URL`.
+4. Las rutas oficiales de cada operación.
+5. El catálogo con los SKUs exactos.
+6. Aprobación de las pruebas.
+7. Acuerdo sobre el fondeo requerido para producción (los $5,000, o la
+   excepción de ~$500 que está en negociación y **no** está aprobada).
+
+La comisión **ya no falta**: es 6% de bono al fondear. Ver la sección
+siguiente, porque el mecanismo cambia la aritmética.
 
 Correo oficial confirmado: `cc@taecel.com`. (Su PDF de levantamiento dice
 `integraciones@taecel.com`; sus dos documentos se contradicen.)
@@ -113,38 +122,58 @@ Tres salidas legítimas, todas decisión de Sizú:
 **Pendiente de decisión.** El motor de precios soporta las tres sin cambiar
 código y **no elige por su cuenta**: sin política configurada no cotiza.
 
-### La tabla que responde la pregunta
+### El 6% de TAECEL no es 6% de descuento
 
-Calculada con el motor (`samy_common/pricing.py`, 31 pruebas en verde) sobre
-la tarifa real de Conekta (3.4% + $3 + IVA). «Cuota» es la cuota uniforme
-mínima con la que la venta **no pierde dinero al cobrarse con tarjeta**:
+El mecanismo es `BONUS_ON_FUNDING`: el descuento se entrega al **comprar**
+saldo, no al gastarlo. Fondear $5,000 deja $5,300 en la Bolsa de Tiempo Aire.
 
-| Comisión TAECEL | $100 | $200 | $500 |
-|---|---|---|---|
-| 3% | $4.61 | $5.60 | $8.55 |
-| 4% | $3.58 | $3.51 | $3.34 |
-| 5% | $2.53 | $1.43 | **$0** (+$1.80) |
-| 6% | $1.50 | **$0** (+$0.63) | **$0** (+$6.80) |
-| **7.42%** | **$0** (equilibrio exacto) | **$0** (+$3.47) | **$0** (+$13.90) |
-| 10% | **$0** (+$2.57) | **$0** (+$8.63) | **$0** (+$26.80) |
+Lo que se gasta en cada recarga es **saldo**, y cada peso de saldo costó
+1/1.06 pesos de efectivo. Así que una recarga de $100 cuesta
 
-Tres lecturas que cambian la decisión:
+    100 / 1.06 = $94.34      y NO      100 × 0.94 = $94.00
 
-- **El punto de equilibrio es 7.42% a $100.** Por encima de eso no hace falta
-  cuota ninguna: la tarjeta ya es rentable sola.
-- **Las denominaciones grandes perdonan mucho más.** A $500 basta con ~4.6%.
-  Si la comisión de TAECEL queda entre 5% y 7%, una salida es vender $100 solo
-  en efectivo y aceptar tarjeta desde $200.
-- **La cuota también paga comisión.** Subirla un peso no deja un peso de
-  margen, porque Conekta cobra su porcentaje sobre el total. Por eso la cuota
-  de equilibrio no es «el costo»: se resuelve, no se suma.
+**El descuento efectivo es 5.66%, no 6%.** Los 34 centavos de diferencia son
+pequeños y el error es *sistemático*: modelarlo como rebate por transacción
+hace creer, en todas y cada una de las ventas, que se gana más de lo que se
+gana. Está implementado como `MecanismoComision.BONO_AL_FONDEAR` y hay 15
+pruebas que lo fijan, incluida una que demuestra el error del modelo
+equivocado.
 
-Con cuota uniforme el cliente paga lo mismo en ambos métodos y lo que cambia
-es el margen: con 5% y cuota de $2.53, el cliente paga $102.53 siempre, y el
-negocio gana $7.53 en efectivo y $0.00 con tarjeta.
+### El margen real, con los números confirmados
 
-**Nada de esto se puede cerrar hasta que TAECEL diga su porcentaje.** Es el
-tercer dato de la lista del bloqueo 1, y conviene pedirlo en el mismo hilo.
+Calculado con el motor (`samy_common/pricing.py`) sobre la tarifa real de
+Conekta (3.4% + $3 + IVA) y el bono real de TAECEL (6% al fondear):
+
+| Denominación | Efectivo | Tarjeta (sin cuota) |
+|---|---|---|
+| $100 | **+$5.66** | **−$1.77** |
+| $200 | **+$11.32** | **−$0.05** |
+| $500 | **+$28.30** | **+$5.10** |
+
+Tres lecturas que deciden la política de precios:
+
+- **En efectivo siempre se gana**, y el margen es exactamente el descuento
+  efectivo: 5.66% del valor nominal.
+- **Con tarjeta, $100 pierde $1.77 por venta.** La comisión de Conekta ($7.43)
+  se come el descuento de TAECEL ($5.66). A $200 está al filo (−$0.05) y a
+  partir de ~$250 ya gana.
+- **La cuota uniforme de equilibrio a $100 es $1.85.** Con ella la tarjeta deja
+  de perder, y el cliente paga $101.85 **en los dos métodos** — que es lo que
+  la hace legal bajo los Términos de Conekta.
+
+Dos salidas legítimas, y la decisión es tuya:
+
+1. `CUOTA_UNIFORME` de $1.85 (o más) en todas las denominaciones y métodos.
+2. `SOLO_EFECTIVO` para $100, aceptando tarjeta desde $200 o $250.
+
+### El piloto de $500
+
+Con el bono del 6%, fondear $500 deja **$530 de saldo**, que alcanzan para
+**5 recargas de $100** ($94.34 cada una). Sirve para validar el flujo
+productivo de punta a punta, no para operar.
+
+La excepción al fondeo mínimo de $5,000 **está en negociación y no está
+aprobada**. El plan no debe asumirla.
 
 ---
 
@@ -238,7 +267,7 @@ Solo entonces existe un producto vendible, y sigue siendo en sandbox.
 | Idempotencia de extremo a extremo | ✅ **Hecha.** Clave por operación, no por petición. Ver abajo. |
 | Control de saldo antes de cobrar | ✅ **Hecho.** En `create_fulfillment`, antes de que exista la orden. |
 | Conciliación de pendientes | ✅ **Hecha, y corregía un bug que reembolsaba de más.** Ver abajo. |
-| Comprobante productivo | Pendiente. |
+| Comprobante productivo | ✅ **Hecho.** Lista blanca en `gateway/comprobante.py`, 17 pruebas. Ver abajo. |
 | `CENTRO-260905-YKK4` | Orden PAID de $300 sin conciliar. Recomendación escrita; **no ejecutada**. |
 | 8 órdenes CREATED abandonadas | Sin limpiar. |
 | `billpay` sin pruebas | 0 tests. |

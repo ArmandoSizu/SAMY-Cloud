@@ -62,6 +62,7 @@ from typing import Final
 __all__ = [
     "MetodoPago",
     "PoliticaPrecio",
+    "MecanismoComision",
     "TarifaPasarela",
     "ComisionProveedor",
     "Cotizacion",
@@ -69,8 +70,11 @@ __all__ = [
     "MetodoDePagoNoPermitido",
     "ConfiguracionDePrecioInvalida",
     "CONEKTA_TARJETA",
+    "TAECEL_BONO_6",
     "cotizar",
     "cuota_minima_uniforme",
+    "saldo_por_fondeo",
+    "efectivo_para_saldo",
 ]
 
 #: Un punto base es 1/100 de 1%. 3.4% = 340 bp.
@@ -92,6 +96,34 @@ class PoliticaPrecio(enum.StrEnum):
     SOLO_EFECTIVO = "SOLO_EFECTIVO"
     CUOTA_UNIFORME = "CUOTA_UNIFORME"
     ABSORBER = "ABSORBER"
+
+
+class MecanismoComision(enum.StrEnum):
+    """COMO nos concede el proveedor su descuento. No es un detalle.
+
+    El mismo porcentaje produce costos distintos segun el mecanismo, y la
+    diferencia va siempre en la direccion peligrosa si se modela mal.
+
+    ``DESCUENTO_POR_TRANSACCION``
+        Cada recarga se cobra mas barata que su valor facial. Con 6%, una
+        recarga de $100 nos cuesta $94.00.
+
+    ``BONO_AL_FONDEAR``
+        El descuento se entrega al comprar saldo, no al gastarlo: se fondea
+        efectivo y se recibe MAS saldo. Es el mecanismo de TAECEL: fondear
+        $5,000 deja $5,300 de saldo.
+
+        Lo que se gasta en cada recarga es SALDO, y cada peso de saldo costo
+        1/1.06 pesos de efectivo. Asi que una recarga de $100 cuesta
+        100/1.06 = **$94.34**, no $94.00.
+
+        Los 34 centavos de diferencia son pequenos y el error es sistematico:
+        siempre hace creer que se gana mas. Con 6% el descuento efectivo no es
+        600 puntos base sino 566.
+    """
+
+    DESCUENTO_POR_TRANSACCION = "DESCUENTO_POR_TRANSACCION"
+    BONO_AL_FONDEAR = "BONO_AL_FONDEAR"
 
 
 class PrecioError(Exception):
@@ -192,30 +224,44 @@ SIN_PASARELA: Final[TarifaPasarela] = TarifaPasarela(
 
 @dataclass(frozen=True, slots=True)
 class ComisionProveedor:
-    """El descuento que el proveedor de recargas nos concede.
+    """Lo que el proveedor nos concede, y **como** nos lo concede.
 
-    Es un INGRESO para el negocio, expresado como descuento sobre el valor
-    facial: con 5% de comision, una recarga de $100 nos cuesta $95.
+    El mecanismo importa tanto como el porcentaje, porque los dos producen
+    costos distintos con el mismo numero. Ver ``MecanismoComision``.
 
-    ``bp=None`` significa **no se sabe**, que es el estado real de TAECEL hoy:
-    su folleto dice "preguntanos por el porcentaje". No se rellena con un
-    numero plausible. El margen entonces es ``None`` y quien lea la cotizacion
-    ve que no se sabe, en vez de creerse una estimacion.
+    ``bp=None`` significa **no se sabe**. No se rellena con un numero
+    plausible: el margen entonces es ``None`` y quien lea la cotizacion ve que
+    no se sabe, en vez de creerse una estimacion.
     """
 
     bp: int | None
     fuente: str = ""
+    mecanismo: "MecanismoComision" = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
+        if self.mecanismo is None:
+            object.__setattr__(
+                self, "mecanismo", MecanismoComision.DESCUENTO_POR_TRANSACCION
+            )
         if self.bp is None:
             return
         if not isinstance(self.bp, int) or isinstance(self.bp, bool):
             raise ConfiguracionDePrecioInvalida(
                 "ComisionProveedor.bp debe ser int en puntos base, o None."
             )
-        if not 0 <= self.bp < BASE_PUNTOS:
+        if self.bp < 0:
             raise ConfiguracionDePrecioInvalida(
-                "La comision del proveedor tiene que estar entre 0 y 100%."
+                "La comision del proveedor no puede ser negativa."
+            )
+        # Un descuento del 100% significaria coste cero, que no existe. Un
+        # BONO del 100% si es concebible (fondear $100 y recibir $200), asi
+        # que el limite solo aplica al mecanismo de descuento.
+        if (
+            self.mecanismo is MecanismoComision.DESCUENTO_POR_TRANSACCION
+            and self.bp >= BASE_PUNTOS
+        ):
+            raise ConfiguracionDePrecioInvalida(
+                "Un descuento por transaccion del 100% o mas daria costo cero."
             )
 
     @property
@@ -225,21 +271,58 @@ class ComisionProveedor:
     def costo(self, valor_facial_cents: int) -> int | None:
         """Lo que nos cuesta entregar esa recarga. ``None`` si no se sabe.
 
-        El descuento se redondea hacia ABAJO y por lo tanto el costo hacia
-        arriba, por la misma razon que todo lo demas: si hay que equivocarse,
-        que sea contra nosotros y no contra la caja.
+        Los dos mecanismos se calculan distinto y la diferencia es dinero:
+
+        ``DESCUENTO_POR_TRANSACCION``
+            ``costo = facial - facial * bp``
+
+        ``BONO_AL_FONDEAR``
+            ``costo = facial / (1 + bp)``
+
+            Porque lo que se gasta es SALDO, y ese saldo se compro mas barato.
+            Con 6% de bono, $5,000 de efectivo producen $5,300 de saldo; cada
+            peso de saldo costo 1/1.06 pesos de efectivo.
+
+        El costo se redondea hacia ARRIBA en los dos casos: si hay que
+        equivocarse, que sea contra nosotros y no contra la caja.
         """
         if self.bp is None:
             return None
+
+        if self.mecanismo is MecanismoComision.BONO_AL_FONDEAR:
+            return _techo(valor_facial_cents * BASE_PUNTOS, BASE_PUNTOS + self.bp)
+
         descuento = (valor_facial_cents * self.bp) // BASE_PUNTOS
         return valor_facial_cents - descuento
 
+    def descuento_efectivo_bp(self, valor_facial_cents: int = 10_000) -> int | None:
+        """Descuento REAL que resulta, en puntos base, sobre un facial dado.
 
-#: No se conoce la comision de TAECEL. Existe como constante con nombre para
-#: que aparezca explicitamente en la configuracion en vez de como un None
-#: suelto que parezca un olvido.
-TAECEL_COMISION_DESCONOCIDA: Final[ComisionProveedor] = ComisionProveedor(
-    bp=None, fuente="TAECEL no publica su porcentaje (folleto de integrador)"
+        Existe para poder mirar de frente la trampa del bono: 600 puntos de
+        bono al fondear no son 600 puntos de descuento, son 566. Sin esta
+        funcion la unica forma de ver la diferencia seria calcularla a mano
+        cada vez que alguien la pusiera en duda.
+        """
+        costo = self.costo(valor_facial_cents)
+        if costo is None:
+            return None
+        return ((valor_facial_cents - costo) * BASE_PUNTOS) // valor_facial_cents
+
+
+#: TAECEL: 6% de BONO AL FONDEAR. Confirmado por su soporte (septiembre 2026).
+#:
+#: Ejemplo que ellos mismos dieron: fondear $5,000 MXN deja $5,300 MXN de
+#: saldo en la Bolsa de Tiempo Aire. Aplica a Telcel, Movistar, AT&T, Unefon y
+#: a Telcel Amigo Sin Limite de $100 y $200.
+#:
+#: LA TRAMPA: 6% de bono NO es 6% de descuento. El descuento efectivo es
+#: 1 - 1/1.06 = **5.66%**. Sobre una recarga de $100 la diferencia entre
+#: modelarlo bien y mal es de 34 centavos, y va en la direccion peligrosa:
+#: el modelo equivocado hace creer que se gana mas de lo que se gana.
+TAECEL_BONO_6: Final[ComisionProveedor] = ComisionProveedor(
+    bp=600,
+    fuente="TAECEL, confirmado por soporte: 6% de bono al fondear",
+    mecanismo=MecanismoComision.BONO_AL_FONDEAR,
 )
 
 
@@ -484,3 +567,47 @@ def cuota_minima_uniforme(
         "No se encontro una cuota de equilibrio en un rango razonable. "
         "Revisa la tarifa de la pasarela y la comision del proveedor."
     )
+
+
+# ---------------------------------------------------------------------------
+# Fondeo: la otra cara del bono
+# ---------------------------------------------------------------------------
+# Estas dos funciones existen para poder planear el fondeo sin hacer cuentas a
+# mano, y para que la relacion efectivo <-> saldo este escrita una sola vez.
+
+
+def saldo_por_fondeo(efectivo_cents: int, comision: ComisionProveedor) -> int | None:
+    """Saldo que se obtiene al fondear ese efectivo. ``None`` si no se sabe.
+
+    Con el mecanismo de bono: ``saldo = efectivo * (1 + bp)``. Fondear $5,000
+    con 6% deja $5,300, que es exactamente el ejemplo que dio TAECEL.
+
+    Con descuento por transaccion el fondeo es uno a uno: el descuento llega
+    despues, al gastar.
+
+    Se redondea hacia ABAJO. El bono que promete el proveedor se cobra cuando
+    llega, no antes: sobrestimarlo aqui haria planear un piloto con saldo que
+    quiza no exista.
+    """
+    if efectivo_cents < 0:
+        raise ValueError("El efectivo fondeado no puede ser negativo.")
+    if comision.bp is None:
+        return None
+    if comision.mecanismo is MecanismoComision.BONO_AL_FONDEAR:
+        return efectivo_cents + (efectivo_cents * comision.bp) // BASE_PUNTOS
+    return efectivo_cents
+
+
+def efectivo_para_saldo(saldo_cents: int, comision: ComisionProveedor) -> int | None:
+    """Efectivo necesario para obtener ese saldo. ``None`` si no se sabe.
+
+    La inversa de ``saldo_por_fondeo``, redondeando hacia ARRIBA: hay que
+    poner el peso completo aunque la division no sea exacta.
+    """
+    if saldo_cents < 0:
+        raise ValueError("El saldo objetivo no puede ser negativo.")
+    if comision.bp is None:
+        return None
+    if comision.mecanismo is MecanismoComision.BONO_AL_FONDEAR:
+        return _techo(saldo_cents * BASE_PUNTOS, BASE_PUNTOS + comision.bp)
+    return saldo_cents

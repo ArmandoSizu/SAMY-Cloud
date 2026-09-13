@@ -44,22 +44,31 @@
 
   {% comment %} Contrasena con opcion de verla: escribir 12 caracteres a ciegas
      en un celular es la receta para no poder entrar despues. {% endcomment %}
-  <div x-data="{ show: false }">
+  {# Sin expresiones en linea: la CSP de produccion no lleva 'unsafe-eval', asi
+     que Alpine no las evalua y el boton de ver la contrasena quedaba muerto.
+     El control esta en static/js/ui.js. #}
+  <div data-password-toggle>
     <label for="{{ form.password1.id_for_label }}" class="field-label">Contrasena</label>
     <div class="relative">
-      <input :type="show ? 'text' : 'password'"
-             type="password"
+      <input type="password"
+             data-password-input
              name="{{ form.password1.html_name }}"
              id="{{ form.password1.id_for_label }}"
              class="input pr-12 {% if form.password1.errors %}input-error{% endif %}"
              autocomplete="new-password"
              required
              {% if form.password1.errors %}aria-invalid="true" aria-describedby="err-password1"{% endif %}>
-      <button type="button" @click="show = !show" tabindex="-1"
-              class="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--color-ink-400)] hover:text-[var(--color-ink-700)]"
-              :aria-label="show ? 'Ocultar contrasena' : 'Mostrar contrasena'">
-        <span x-show="!show">{% include "_icons.html" with name="lock" %}</span>
-        <span x-show="show" x-cloak>{% include "_icons.html" with name="check" %}</span>
+      <button type="button" tabindex="-1"
+              data-password-button
+              data-label-mostrar="Mostrar contrasena"
+              data-label-ocultar="Ocultar contrasena"
+              aria-label="Mostrar contrasena"
+              aria-pressed="false"
+              class="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--color-ink-400)] hover:text-[var(--color-ink-700)]">
+        <span data-icono="mostrar">{% include "_icons.html" with name="lock" %}</span>
+        {# Nace con `hidden` puesto por el servidor: sin destello del icono
+           equivocado mientras carga el JavaScript. #}
+        <span data-icono="ocultar" hidden>{% include "_icons.html" with name="check" %}</span>
       </button>
     </div>
     <p class="mt-1 text-xs text-[var(--color-ink-400)]">

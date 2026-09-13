@@ -39,112 +39,119 @@
   <div class="surface mt-5 p-6">
     <div class="receipt">
 
+      {% comment %}
+      TODO lo que sale aqui viene de `ticket`, armado como lista blanca en
+      apps/gateway/comprobante.py. La plantilla ya NO recibe los diccionarios
+      crudos de la orden ni del cumplimiento, asi que no puede imprimir por
+      descuido un token, un NIP ni un identificador tecnico. Antes esta misma
+      plantilla terminaba con {{ order.id }}: un UUID que al cliente no le
+      dice nada y que ocupaba una linea del ticket.
+      {% endcomment %}
+
       <div class="text-center">
         <p class="text-base font-bold tracking-tight">SAMY CLOUD</p>
-        <p class="mt-0.5 text-xs">{{ store.name }}</p>
-        {% if store.address %}<p class="text-xs">{{ store.address }}</p>{% endif %}
-        <p class="text-xs">{{ store.city }}{% if store.state %}, {{ store.state }}{% endif %}</p>
+        <p class="mt-0.5 text-xs">{{ ticket.tienda }}</p>
+        {% if ticket.tienda_direccion %}<p class="text-xs">{{ ticket.tienda_direccion }}</p>{% endif %}
+        {% if ticket.tienda_ciudad %}<p class="text-xs">{{ ticket.tienda_ciudad }}</p>{% endif %}
       </div>
 
       <div class="receipt-rule"></div>
 
-      <div class="receipt-row"><span>Folio</span><span class="font-bold">{{ order.folio }}</span></div>
-      <div class="receipt-row"><span>Fecha</span><span>{{ order.created_at|date:"d/m/Y H:i" }}</span></div>
-      <div class="receipt-row"><span>Cajero</span><span>{{ user.get_short_name }}</span></div>
-
-      <div class="receipt-rule"></div>
-
-      <div class="receipt-row"><span>Servicio</span><span>{{ order.description }}</span></div>
-
-      {% if fulfillment %}
-        {% if fulfillment.phone_masked %}
-          <div class="receipt-row"><span>Numero</span><span>{{ fulfillment.phone_masked }}</span></div>
-        {% endif %}
-        {% if fulfillment.reference_masked %}
-          <div class="receipt-row"><span>Referencia</span><span>{{ fulfillment.reference_masked }}</span></div>
-        {% endif %}
-        {% if fulfillment.operator_reference %}
-          <div class="receipt-row">
-            <span>Folio operador</span><span class="font-bold">{{ fulfillment.operator_reference }}</span>
-          </div>
-        {% elif fulfillment.provider_reference %}
-          {% comment %}
-          Muchos operadores no devuelven folio propio. El del proveedor si
-          existe siempre que la recarga se envio, y es el numero con el que se
-          reclama: sin el, el cliente no tiene con que reclamar nada.
-          {% endcomment %}
-          <div class="receipt-row">
-            <span>Folio proveedor</span><span class="font-bold">{{ fulfillment.provider_reference }}</span>
-          </div>
-        {% endif %}
-        {% if fulfillment.biller_reference %}
-          <div class="receipt-row">
-            <span>Folio del servicio</span><span class="font-bold">{{ fulfillment.biller_reference }}</span>
-          </div>
-        {% endif %}
+      <div class="receipt-row"><span>Folio</span><span class="font-bold">{{ ticket.folio }}</span></div>
+      <div class="receipt-row"><span>Fecha</span><span>{{ ticket.fecha|date:"d/m/Y H:i" }}</span></div>
+      {% comment %}
+      El cajero que HIZO la venta, no quien esta mirando el comprobante. Antes
+      era {{ user.get_short_name }}, asi que el dueno abriendo el ticket de un
+      cajero veia su propio nombre impreso como cajero, y en un negocio con
+      turnos eso hace la auditoria imposible.
+      {% endcomment %}
+      {% if ticket.cajero %}
+        <div class="receipt-row"><span>Cajero</span><span>{{ ticket.cajero }}</span></div>
       {% endif %}
 
       <div class="receipt-rule"></div>
 
-      <div class="receipt-row"><span>Importe</span><span>{{ order.base_display }}</span></div>
-      <div class="receipt-row"><span>Comision</span><span>{{ order.commission_display }}</span></div>
+      {% if ticket.operador %}
+        <div class="receipt-row"><span>Operador</span><span>{{ ticket.operador }}</span></div>
+      {% endif %}
+      {% comment %}
+      El nombre EXACTO del producto, separado del operador. Si el cliente
+      reclama, lo que compara es este nombre.
+      {% endcomment %}
+      {% if ticket.producto %}
+        <div class="receipt-row"><span>Producto</span><span>{{ ticket.producto }}</span></div>
+      {% endif %}
+      {% if ticket.numero_enmascarado %}
+        <div class="receipt-row"><span>Numero</span><span>{{ ticket.numero_enmascarado }}</span></div>
+      {% endif %}
+      {% if ticket.folio_proveedor %}
+        {% comment %}
+        Es el numero con el que el cliente reclama. Sin el no tiene con que
+        reclamar nada, asi que se imprime en negritas.
+        {% endcomment %}
+        <div class="receipt-row">
+          <span>{{ ticket.etiqueta_folio_proveedor }}</span>
+          <span class="font-bold">{{ ticket.folio_proveedor }}</span>
+        </div>
+      {% endif %}
+
+      <div class="receipt-rule"></div>
+
+      <div class="receipt-row"><span>Valor nominal</span><span>{{ ticket.valor_nominal }}</span></div>
+      <div class="receipt-row"><span>Comision</span><span>{{ ticket.comision }}</span></div>
       <div class="receipt-row text-base font-bold">
-        <span>TOTAL</span><span>{{ order.total_display }}</span>
+        <span>TOTAL PAGADO</span><span>{{ ticket.total_pagado }}</span>
       </div>
-      {% if change_cents %}
-        <div class="receipt-row"><span>Cambio</span><span>{{ change_display }}</span></div>
+      {% if ticket.cambio %}
+        <div class="receipt-row"><span>Cambio</span><span>{{ ticket.cambio }}</span></div>
       {% endif %}
 
       <div class="receipt-rule"></div>
 
       <div class="receipt-row">
-        <span>Estado</span>
-        <span class="font-bold">
-          {% if order.state == "SUCCESS" %}COMPLETADA
-          {% elif order.state == "PAID" %}PAGADA - EN PROCESO
-          {% elif order.state == "PROCESSING" %}EN PROCESO
-          {% elif order.state == "FAILED" %}FALLIDA
-          {% elif order.state == "REFUND_PENDING" %}REEMBOLSO PENDIENTE
-          {% elif order.state == "REFUNDED" %}REEMBOLSADA
-          {% elif order.state == "UNDER_REVIEW" %}EN REVISION
-          {% else %}{{ order.state }}{% endif %}
-        </span>
+        <span>Estado</span><span class="font-bold">{{ ticket.estado }}</span>
       </div>
-      {% if order.payment_method %}
-        <div class="receipt-row"><span>Pago</span><span>{{ order.payment_method }}</span></div>
+      {% if ticket.metodo_pago %}
+        <div class="receipt-row"><span>Pago</span><span>{{ ticket.metodo_pago }}</span></div>
       {% endif %}
 
       {% comment %}
-      El aviso de prueba tiene que mirar AMBOS lados. El cobro puede ser real
-      (efectivo en el mostrador siempre lo es) mientras el servicio se ejecuta
-      contra un sandbox: ese comprobante no puede parecer una operacion
-      normal, porque el saldo no llego a ningun telefono. Mirar solo el modo
-      del cobro dejaba justo ese caso sin aviso.
+      El aviso de prueba mira AMBOS lados, y no es un caso teorico: el
+      efectivo en el mostrador es SIEMPRE real, mientras el proveedor de
+      recargas puede estar en sandbox. Ese comprobante no puede parecer una
+      operacion normal, porque el cliente pago de verdad y el saldo no llego a
+      ningun telefono.
+
+      En PRODUCCION las dos banderas son falsas y el comprobante no menciona
+      ningun ambiente. Un ticket productivo que dijera "sandbox" seria un
+      ticket que nadie se cree.
       {% endcomment %}
-      {% if order.provider_mode == "SANDBOX" or fulfillment.provider_mode == "SANDBOX" %}
+      {% if ticket.hay_aviso_de_pruebas %}
         <div class="receipt-rule"></div>
         <p class="text-center text-xs font-bold">*** OPERACION DE PRUEBA ***</p>
         <p class="text-center text-xs">Ambiente sandbox. Sin valor real.</p>
-        {% if fulfillment.provider_mode == "SANDBOX" %}
+        {% if ticket.servicio_en_pruebas %}
           <p class="text-center text-xs">El saldo NO llego a un telefono real.</p>
         {% endif %}
       {% endif %}
 
       <div class="receipt-rule"></div>
       <p class="text-center text-xs">Conserva este comprobante</p>
-      <p class="text-center text-xs">{{ order.id }}</p>
     </div>
   </div>
 
   <!-- ================= Acciones ================= -->
   <div class="mt-5 flex gap-2 no-print">
     {% comment %}
-    El "imprimir" va por x-on y NO por onclick. Un onclick es JavaScript en
-    linea: la CSP de produccion no permite 'unsafe-inline' en script-src, asi
-    que el navegador lo bloquearia sin decir nada y el cajero se quedaria con
-    un boton que no hace nada. Alpine ya esta cargado en todas las pantallas.
+    Ni onclick ni Alpine. La CSP de produccion no lleva 'unsafe-inline' (que
+    bloquearia un onclick) NI 'unsafe-eval' (que es lo que Alpine necesita
+    para evaluar @click). Con cualquiera de los dos, este boton se pintaba
+    perfecto y no hacia nada: el cajero pulsaba Imprimir y no pasaba nada, sin
+    ningun error que lo delatara.
+
+    El control esta en static/js/ui.js, activado por data-print.
     {% endcomment %}
-    <button type="button" x-data @click="window.print()" class="btn btn-secondary flex-1">
+    <button type="button" data-print class="btn btn-secondary flex-1">
       {% include "_icons.html" with name="print" %}
       Imprimir
     </button>

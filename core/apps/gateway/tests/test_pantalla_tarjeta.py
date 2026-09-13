@@ -321,35 +321,92 @@ class ComprobanteTests(SimpleTestCase):
     COMPROBANTE = RAIZ / "templates" / "operations" / "receipt.html"
 
     def setUp(self) -> None:
-        self.contenido = self.COMPROBANTE.read_text(encoding="utf-8")
+        crudo = self.COMPROBANTE.read_text(encoding="utf-8")
+        # Se quitan los bloques {% comment %}, y no es un atajo: un comentario
+        # NO se renderiza, asi que buscar en el texto crudo daba falsos
+        # positivos contra las propias notas que explican que se quito
+        # "onclick" o "{{ order.id }}" y por que. La prueba tiene que mirar lo
+        # que el navegador recibe, no lo que el archivo contiene.
+        self.contenido = re.sub(
+            r"\{%\s*comment\s*%\}.*?\{%\s*endcomment\s*%\}",
+            "",
+            crudo,
+            flags=re.DOTALL,
+        )
+        #: El texto completo, comentarios incluidos. Para las pruebas que si
+        #: quieren comprobar que una explicacion sigue escrita.
+        self.contenido_con_comentarios = crudo
 
-    def test_lleva_el_desglose_del_dinero(self) -> None:
-        for campo in ("order.base_display", "order.commission_display",
-                      "order.total_display"):
+    # El QUE muestra el comprobante se prueba sobre el objeto, en
+    # test_comprobante.py: ahi la logica es Python y se puede ejercitar de
+    # verdad. Lo que queda aqui es lo unico que sigue siendo responsabilidad
+    # de la plantilla: no saltarse la lista blanca.
+
+    def test_todo_lo_del_cliente_sale_del_ticket(self) -> None:
+        for campo in (
+            "ticket.folio",
+            "ticket.fecha",
+            "ticket.tienda",
+            "ticket.cajero",
+            "ticket.operador",
+            "ticket.producto",
+            "ticket.numero_enmascarado",
+            "ticket.valor_nominal",
+            "ticket.total_pagado",
+            "ticket.metodo_pago",
+            "ticket.estado",
+            "ticket.folio_proveedor",
+        ):
             with self.subTest(campo=campo):
                 self.assertIn(campo, self.contenido)
 
-    def test_lleva_folio_y_estado(self) -> None:
-        self.assertIn("order.folio", self.contenido)
-        self.assertIn("order.state", self.contenido)
+    def test_la_plantilla_no_se_salta_la_lista_blanca(self) -> None:
+        """No lee los diccionarios crudos para pintar datos del cliente.
 
-    def test_lleva_el_telefono_enmascarado_y_nunca_el_completo(self) -> None:
-        """El numero se muestra enmascarado: el comprobante se queda en el local."""
-        self.assertIn("fulfillment.phone_masked", self.contenido)
-        self.assertNotIn("fulfillment.phone_e164", self.contenido)
-        self.assertNotIn("fulfillment.phone ", self.contenido)
+        Es la prueba que mantiene honesta la capa de ``comprobante.py``. Si
+        alguien vuelve a pintar ``{{ fulfillment.algo }}``, ese algo no pasa
+        por ningun filtro y basta con que el serializador exponga un campo
+        nuevo para que acabe impreso en un ticket.
+        """
+        for prohibido in (
+            "order.base_display",
+            "order.total_display",
+            "order.commission_display",
+            "order.description",
+            "order.payment_method",
+            "order.provider_mode",
+            "fulfillment.phone_masked",
+            "fulfillment.phone_e164",
+            "fulfillment.provider_reference",
+            "fulfillment.operator_reference",
+            "fulfillment.provider_mode",
+            "user.get_short_name",
+        ):
+            with self.subTest(prohibido=prohibido):
+                self.assertNotIn(prohibido, self.contenido)
 
-    def test_lleva_la_referencia_con_la_que_se_reclama(self) -> None:
-        """Sin folio del proveedor el cliente no puede reclamar la recarga."""
-        self.assertIn("fulfillment.operator_reference", self.contenido)
-        self.assertIn("fulfillment.provider_reference", self.contenido)
+    def test_no_imprime_el_uuid_de_la_orden(self) -> None:
+        """Lo imprimia al pie. Al cliente no le dice nada.
+
+        El id sigue usandose para armar la URL del refresco por HTMX, que es
+        legitimo; lo que no puede es salir impreso.
+        """
+        self.assertNotIn("{{ order.id }}", self.contenido)
 
     def test_avisa_cuando_la_operacion_es_de_prueba(self) -> None:
         """Un comprobante de sandbox no puede parecer una operacion normal."""
         self.assertIn("OPERACION DE PRUEBA", self.contenido)
-        self.assertIn('fulfillment.provider_mode == "SANDBOX"', self.contenido)
+        self.assertIn("ticket.hay_aviso_de_pruebas", self.contenido)
+        self.assertIn("ticket.servicio_en_pruebas", self.contenido)
 
-    def test_no_anuncia_exito_antes_de_tiempo(self) -> None:
-        """Pagada y entregada son cosas distintas y el ticket las distingue."""
-        self.assertIn("PAGADA - EN PROCESO", self.contenido)
-        self.assertIn("COMPLETADA", self.contenido)
+    def test_el_boton_de_imprimir_no_depende_de_alpine_ni_de_onclick(self) -> None:
+        """Las dos formas obvias estan bloqueadas por la CSP.
+
+        ``onclick`` necesita 'unsafe-inline' y ``@click`` de Alpine necesita
+        'unsafe-eval'. Con cualquiera de las dos, el cajero pulsaba Imprimir y
+        no pasaba nada, sin ningun error que lo delatara.
+        """
+        self.assertIn("data-print", self.contenido)
+        self.assertNotIn("onclick", self.contenido)
+        self.assertNotIn("@click", self.contenido)
+        self.assertNotIn("x-data", self.contenido)

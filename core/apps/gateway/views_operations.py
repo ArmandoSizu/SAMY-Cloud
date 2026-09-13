@@ -26,6 +26,7 @@ from apps.gateway.clients import (
     payments_client_cobro,
     topups_client,
 )
+from apps.gateway import comprobante
 from apps.gateway.idempotencia import clave as idem_clave
 from apps.tenancy.permissions import require_perm, user_has_perm
 from samy_common.money import Money
@@ -312,17 +313,39 @@ def receipt(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
 
     change_cents = request.session.pop(f"change_{order_id}", None)
 
+    # El comprobante se arma como LISTA BLANCA en apps/gateway/comprobante.py.
+    # La plantilla ya no recibe los diccionarios crudos de la orden ni del
+    # cumplimiento, asi que no puede imprimir por descuido un token, un NIP o
+    # un UUID tecnico. Antes imprimia {{ order.id }}, que al cliente no le
+    # dice nada.
+    ticket = comprobante.construir(
+        orden=order,
+        cumplimiento=fulfillment,
+        tienda=request.store,
+        buscar_usuario=_buscar_usuario,
+        cambio_display=_money(change_cents) if change_cents else "",
+    )
+
     return render(
         request,
         "operations/receipt.html",
         {
+            "ticket": ticket,
+            # La orden sigue haciendo falta para el bloque de estado en vivo
+            # (su id para la URL de HTMX y su estado para decidir si refresca).
             "order": order,
             "fulfillment": fulfillment,
-            "store": request.store,
             "change_cents": change_cents,
             "change_display": _money(change_cents) if change_cents else "",
         },
     )
+
+
+def _buscar_usuario(user_id: object):
+    """Usuario por id, o ``None``. Lo usa el comprobante para el cajero."""
+    from django.contrib.auth import get_user_model
+
+    return get_user_model().objects.filter(pk=user_id).first()
 
 
 @login_required

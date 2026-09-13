@@ -194,10 +194,27 @@
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Imprimir
+  // -----------------------------------------------------------------------
+  // <button type="button" data-print>Imprimir</button>
+  //
+  // Existe porque las dos formas obvias estan bloqueadas por la CSP de
+  // produccion: `onclick="window.print()"` necesita 'unsafe-inline' y
+  // `@click="window.print()"` de Alpine necesita 'unsafe-eval'. Con las dos,
+  // el boton se pinta bien y no hace nada.
+  function iniciarImprimir(boton) {
+    if (yaIniciado(boton, "uiPrint")) return;
+    boton.addEventListener("click", function () {
+      window.print();
+    });
+  }
+
   function iniciarTodo(raiz) {
     porCada("[data-password-toggle]", raiz, iniciarPassword);
     porCada("[data-collapsible]", raiz, iniciarPlegable);
     porCada("[data-toast]", raiz, iniciarToast);
+    porCada("[data-print]", raiz, iniciarImprimir);
   }
 
   if (document.readyState === "loading") {

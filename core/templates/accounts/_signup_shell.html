@@ -62,5 +62,8 @@
 {% endblock %}
 
 {% block extra_head %}
-<style>[x-cloak] { display: none !important; }</style>
+{# Aqui habia <style>[x-cloak]{display:none!important}</style>. Se quito: la
+   regla ya vive en assets/app.css, y la CSP de produccion (style-src 'self')
+   no creaba la hoja -- el bloque reportaba "sin sheet" en el navegador. Era
+   codigo muerto que aparentaba hacer algo. #}
 {% endblock %}
