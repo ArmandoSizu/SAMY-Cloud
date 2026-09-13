@@ -117,3 +117,8 @@ Claude outputs/
 # quedando como archivo sin seguimiento en cada bloque, y un aviso de "hay
 # archivos sin commitear" que siempre es falso es un aviso que se deja de leer.
 /m.txt
+
+# Bitacoras de evidencias que se le entregan a un proveedor. Llevan los saldos
+# de nuestra cuenta y su identificador de soporte: no son secretos, pero
+# tampoco hay ninguna razon para publicarlos en un repositorio publico.
+/LINNTAE_DEMO_LOGS_*.txt
