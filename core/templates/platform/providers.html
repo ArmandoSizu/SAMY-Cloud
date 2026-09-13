@@ -58,6 +58,16 @@
                     {% if provider.requires_commercial_contract %}
                       <span class="badge badge-neutral">Contrato comercial</span>
                     {% endif %}
+                    {# El ambiente. Es la pregunta que este panel existe para
+                       contestar de un vistazo: un [Operativo] que no dice
+                       contra que ambiente opera es justo lo que no se puede
+                       distinguir mirando. El dato ya venia en la respuesta del
+                       servicio; esta plantilla simplemente no lo pintaba. #}
+                    {% if provider.mode == "PRODUCTION" %}
+                      <span class="badge badge-warning">PRODUCCION</span>
+                    {% elif provider.mode %}
+                      <span class="badge badge-neutral">Sandbox</span>
+                    {% endif %}
                   </div>
                   <p class="mt-1.5 text-sm text-[var(--color-ink-500)]">{{ provider.detail }}</p>
 

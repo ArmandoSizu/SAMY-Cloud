@@ -237,15 +237,27 @@ class LinntaeProvider(TopupProvider):
             )
 
         if self.config.type_balance is None:
+            # El detalle dice el host y los saldos REALES que acaba de
+            # devolver Linntae, no solo que "autentica".
+            #
+            # No es adorno: este texto es lo que se ve en el panel de
+            # plataforma, y la diferencia entre "la integracion funciona" y
+            # "la integracion funciona, aqui esta el saldo que reporto" es la
+            # diferencia entre una afirmacion y una evidencia. Los dos
+            # numeros vienen de la respuesta de esta misma llamada.
+            bolsas = f"{saldos.plataforma} de saldo de plataforma"
+            if saldos.comision is not None:
+                bolsas += f" y {saldos.comision} de comision"
             return ProviderHealth(
                 status=ProviderStatus.DEGRADED,
                 detail=(
-                    "Linntae autentica y tiene saldo, pero falta "
-                    "LINNTAE_TYPE_BALANCE. Su API exige 'typeBalance' en cada "
-                    "compra y no publica que numero corresponde a cada bolsa. "
-                    "Confirmalo con Linntae y ponlo en el .env: mandar el "
-                    "numero equivocado gasta la bolsa equivocada. Mientras "
-                    "falte, el producto no es vendible, que es lo correcto."
+                    f"Linntae autentica en {self.config.host} ({self.mode}) y "
+                    f"reporta {bolsas}. Falta LINNTAE_TYPE_BALANCE: su API "
+                    "exige 'typeBalance' en cada compra y no publica que "
+                    "numero corresponde a cada bolsa. Confirmalo con Linntae y "
+                    "ponlo en el .env: mandar el numero equivocado gasta la "
+                    "bolsa equivocada. Mientras falte, el producto no es "
+                    "vendible, que es lo correcto."
                 ),
                 missing_requirements=(
                     "LINNTAE_TYPE_BALANCE confirmado con Linntae",
