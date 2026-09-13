@@ -25,6 +25,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.catalog.models import TopupProduct
+from apps.fulfillment import saldo
 from apps.fulfillment.models import TopupFulfillment
 from apps.outbox.models import OutboxEvent
 from apps.providers.base import TopupRequest, TopupStatus
@@ -80,6 +81,18 @@ def create_fulfillment(
             "Este producto requiere que captures un monto."
         )
     product.validate_amount(resolved_amount)
+
+    # --- Saldo del proveedor, AQUI y no despues --------------------------
+    #
+    # Este es el ultimo punto en el que todavia se puede decir que no sin que
+    # cueste dinero: la orden no existe, asi que no hay nada cobrado. Si se
+    # comprobara en execute_topup, la secuencia seria cobrar primero y
+    # descubrir que no hay saldo despues, dejando al cliente pagado y sin
+    # recarga.
+    #
+    # Un saldo insuficiente CONFIRMADO bloquea en cualquier ambiente. Uno que
+    # no se pudo verificar bloquea solo en produccion. Ver samy_common.saldo.
+    saldo.verificar_o_fallar(get_provider(product.provider_slug), resolved_amount)
 
     fulfillment = TopupFulfillment.objects.create(
         organization_id=organization_id,

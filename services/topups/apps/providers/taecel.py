@@ -70,6 +70,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Final
 
 import httpx
@@ -96,6 +97,7 @@ from samy_common.providers.exceptions import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+from samy_common.saldo import SaldoProveedor
 
 log = structlog.get_logger("provider.taecel")
 
@@ -339,6 +341,54 @@ class TaecelProvider(TopupProvider):
                 f"Saldo: {saldo} {CURRENCY_MX}."
             ),
             latency_ms=int((time.perf_counter() - inicio) * 1000),
+        )
+
+    # -- saldo -------------------------------------------------------------
+
+    def saldo_disponible(self) -> SaldoProveedor:
+        """Saldo prepagado en TAECEL, en MXN.
+
+        Mientras el contrato HTTP no este confirmado o falte la ruta de
+        saldo, devuelve "no lo se" -- no cero. En produccion eso bloquea la
+        venta, que es lo correcto: TAECEL es prepago y vender sin poder
+        verificar fondos deja ordenes cobradas sin recarga.
+        """
+        if not (self.config.credenciales_completas and self.config.contract_verified):
+            return SaldoProveedor(
+                disponible=None,
+                detalle="TAECEL sin credenciales o con el contrato sin confirmar.",
+            )
+        if not self.config.path_balance:
+            return SaldoProveedor(
+                disponible=None, detalle="Falta TAECEL_PATH_BALANCE."
+            )
+
+        try:
+            datos = self._llamar(self.config.path_balance, {})
+        except (httpx.HTTPError, ProviderTransientError, ProviderPermanentError) as exc:
+            return SaldoProveedor(
+                disponible=None, detalle=f"No se pudo consultar a TAECEL: {exc}"
+            )
+
+        crudo = self._leer_saldo(datos)
+        if crudo is None:
+            return SaldoProveedor(
+                disponible=None,
+                detalle="TAECEL respondio pero no se reconocio el saldo.",
+            )
+
+        # _leer_saldo devuelve float por venir de texto con separadores. Se
+        # convierte a centavos por la via de Decimal, nunca multiplicando el
+        # float por 100: ahi es donde aparecen los centavos fantasma.
+        try:
+            disponible = Money.parse(Decimal(str(crudo)), CURRENCY_MX)
+        except (ValueError, ArithmeticError, TypeError):
+            return SaldoProveedor(
+                disponible=None, detalle=f"Saldo ilegible de TAECEL: {crudo!r}"
+            )
+
+        return SaldoProveedor(
+            disponible=disponible, detalle=f"Saldo prepagado TAECEL ({self.mode})."
         )
 
     # -- catalogo ----------------------------------------------------------

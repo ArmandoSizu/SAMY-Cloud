@@ -75,6 +75,7 @@ from samy_common.providers.exceptions import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+from samy_common.saldo import SaldoProveedor
 
 log = structlog.get_logger("provider.reloadly")
 
@@ -206,6 +207,64 @@ class ReloadlyProvider(TopupProvider):
                 f"Saldo: {amount} {balance.get('currencyCode', '')}."
             ),
             latency_ms=int((time.perf_counter() - started) * 1000),
+        )
+
+    # -- saldo -------------------------------------------------------------
+
+    def saldo_disponible(self) -> SaldoProveedor:
+        """Saldo del MONEDERO, en la moneda del monedero.
+
+        Y ahi esta lo importante: el monedero de Reloadly esta en USD (al
+        menos en sandbox) mientras las recargas se venden en MXN. Se devuelve
+        la moneda que Reloadly reporte, TAL CUAL, sin convertir. Convertirla
+        aqui exigiria un tipo de cambio que Reloadly no da en esta respuesta,
+        y ``samy_common.saldo`` sabe negarse a comparar monedas distintas.
+
+        Un error al consultar NO se traduce a cero: cero significaria "no hay
+        fondos" y lo que pasa es que no se pudo preguntar.
+        """
+        # Sin credenciales no se sale a la red. Sin este corte, cada
+        # create_fulfillment de una instalacion sin configurar -y cada prueba
+        # que crea un cumplimiento- intentaria autenticarse contra Reloadly
+        # para acabar devolviendo lo mismo que se devuelve aqui.
+        if not (self.config.client_id and self.config.client_secret):
+            return SaldoProveedor(
+                disponible=None, detalle="Reloadly no tiene credenciales."
+            )
+
+        try:
+            with self._client() as client:
+                response = client.get("/accounts/balance")
+        except (httpx.HTTPError, ProviderTransientError, ProviderPermanentError) as exc:
+            return SaldoProveedor(
+                disponible=None, detalle=f"No se pudo consultar a Reloadly: {exc}"
+            )
+
+        if response.status_code >= 400:
+            return SaldoProveedor(
+                disponible=None,
+                detalle=f"Reloadly respondio {response.status_code} al pedir el saldo.",
+            )
+
+        datos = response.json() if response.content else {}
+        crudo = datos.get("balance")
+        moneda = str(datos.get("currencyCode") or "").upper()
+        if crudo is None or not moneda:
+            return SaldoProveedor(
+                disponible=None,
+                detalle="Reloadly respondio sin saldo o sin moneda reconocible.",
+            )
+
+        try:
+            disponible = Money.parse(str(crudo), moneda)
+        except (ValueError, ArithmeticError, TypeError):
+            return SaldoProveedor(
+                disponible=None,
+                detalle=f"Reloadly devolvio un saldo ilegible ({crudo!r} {moneda}).",
+            )
+
+        return SaldoProveedor(
+            disponible=disponible, detalle=f"Monedero de Reloadly ({self.mode})."
         )
 
     # -- catalogo ----------------------------------------------------------

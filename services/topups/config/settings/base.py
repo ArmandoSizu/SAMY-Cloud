@@ -213,6 +213,27 @@ TAECEL_PATH_STATUS_TXN = env.str("TAECEL_PATH_STATUS_TXN", default="StatusTXN")
 TAECEL_PATH_BALANCE = env.str("TAECEL_PATH_BALANCE", default="")
 TAECEL_PATH_PRODUCTS = env.str("TAECEL_PATH_PRODUCTS", default="")
 
+# ---------------------------------------------------------------------------
+# Guarda de saldo del proveedor
+# ---------------------------------------------------------------------------
+# Se comprueba en create_fulfillment, ANTES de que exista la orden. Ver
+# apps/fulfillment/saldo.py y samy_common/saldo.py.
+
+#: Segundos que se cachea el saldo del proveedor. Corto a proposito: Reloadly
+#: suspende cuentas por exceso de llamadas, pero un saldo viejo deja pasar
+#: ventas con fondos que ya no existen. Segundos, no minutos.
+TOPUP_SALDO_CACHE_SECONDS = env.int("TOPUP_SALDO_CACHE_SECONDS", default=30)
+
+#: Colchon de saldo que no se vende, en centavos.
+#:
+#: Vender hasta dejar el saldo exactamente en cero hace que la venta
+#: siguiente falle a mitad de camino con la orden ya pagada. Esta reserva
+#: absorbe tambien la ventana del cache.
+#:
+#: Por omision CERO: el valor correcto depende del volumen del negocio y es
+#: una decision de Sizu, no un numero que el codigo deba inventar.
+TOPUP_RESERVA_SALDO_CENTS = env.int("TOPUP_RESERVA_SALDO_CENTS", default=0)
+
 #: Cada cuanto se refresca el catalogo. Un catalogo viejo puede ofrecer
 #: paquetes que el operador ya retiro.
 CATALOG_SYNC_HOURS = env.int("CATALOG_SYNC_HOURS", default=6)

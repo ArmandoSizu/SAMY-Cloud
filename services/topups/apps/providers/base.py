@@ -17,6 +17,7 @@ from typing import Any
 
 from samy_common.money import Money
 from samy_common.providers.base import BaseProvider
+from samy_common.saldo import SaldoProveedor
 
 __all__ = [
     "TopupProvider",
@@ -144,6 +145,24 @@ class TopupProvider(BaseProvider[Any], abc.ABC):
     def get_topup_status(self, provider_reference: str) -> TopupResult:
         """Consulta el estado real. Es el mecanismo de conciliacion."""
         raise NotImplementedError
+
+    def saldo_disponible(self) -> "SaldoProveedor":
+        """Saldo que el proveedor dice tener. Se usa ANTES de cobrar.
+
+        Por omision devuelve ``SALDO_NO_REPORTADO``, que es la respuesta
+        segura: "no lo se". Un adaptador que no sepa consultar su saldo no
+        puede afirmar que hay fondos, y en produccion eso bloquea la venta
+        (ver ``samy_common.saldo``). Devolver cero por omision seria peor en
+        las dos direcciones: bloquearia proveedores que si tienen fondos, y
+        confundiria "no lo dijo" con "dijo que no tiene".
+
+        Se consulta una vez y se cachea unos segundos: Reloadly castiga el
+        exceso de llamadas suspendiendo la cuenta, y reactivarla exige hablar
+        con soporte. Ver ``apps.fulfillment.saldo``.
+        """
+        from samy_common.saldo import SALDO_NO_REPORTADO
+
+        return SALDO_NO_REPORTADO
 
     def find_by_custom_identifier(self, custom_identifier: str) -> TopupResult | None:
         """Busca una recarga por NUESTRA referencia, sin conocer la del proveedor.
