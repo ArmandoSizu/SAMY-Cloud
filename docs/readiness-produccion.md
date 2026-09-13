@@ -214,7 +214,7 @@ Solo entonces existe un producto vendible, y sigue siendo en sandbox.
 |---|---|
 | Separación SANDBOX/PRODUCTION | ✅ **Hecha.** Ver abajo. |
 | Motor de precios / `Cotizacion` | ✅ **Hecho.** `samy_common/pricing.py`, módulo puro, 31 pruebas. Falta que Sizú elija la política y que TAECEL diga su comisión. |
-| CSP en modo `enforce` | Pendiente. Alpine 3.14.9 usa `new Function()`; hay que elegir entre `@alpinejs/csp` o quitar Alpine del flujo crítico. |
+| CSP en modo `enforce` | ⚠️ **Ya estaba en enforce, y Alpine está muerto bajo ella.** Reproducido en navegador. Migración en curso: 2 de 9 plantillas. Ver abajo. |
 | Idempotencia de extremo a extremo | Pendiente. |
 | Conciliación automática | Pendiente. Hay comando documentado, sin ejecutar. |
 | Comprobante productivo | Pendiente. |
@@ -260,6 +260,76 @@ Detalles que importan:
 Verificado el 13/09/2026 en el contenedor en marcha: Reloadly sandbox en
 `development` sigue pasando (el golden path no se rompió), y un proveedor en
 modo `PRODUCTION` es rechazado con `code=provider_environment_mismatch`.
+
+---
+
+## CSP: Alpine está muerto bajo la política real
+
+La CSP de producción **ya estaba en modo enforce** y sin `unsafe-eval`
+(`script-src 'self' https://pay.conekta.com`). Alpine.js evalúa sus
+expresiones construyendo funciones a partir de cadenas, que es exactamente lo
+que `unsafe-eval` habilita. Resultado: **cada directiva de Alpine lanza
+`EvalError` y el control queda muerto.**
+
+Lo peligroso es el síntoma. La pantalla se pinta completa, sin error visible
+ni hueco en el diseño; los botones simplemente no hacen nada. El cajero no
+tiene forma de notarlo.
+
+No se dedujo leyendo el código: se reprodujo el 13/09/2026 con
+`CSP_ENFORCE=True` en un navegador real. Las seis directivas de la pantalla de
+login lanzaron `EvalError` y el botón de mostrar contraseña quedó inerte.
+
+### `CSP_ENFORCE`, la mitad que faltaba
+
+El modo solo-reporte avisa de lo que producción *bloquearía*, pero la pantalla
+sigue funcionando, así que nadie ve el síntoma. `CSP_ENFORCE=True` aplica la
+política de verdad en desarrollo. **Queda en `True`** mientras haya plantillas
+sin migrar: es preferible verlas roto aquí que descubrirlo en el mostrador.
+Se puede poner en `False` para una demo.
+
+### La decisión: JS modular propio, no `@alpinejs/csp`
+
+El build `@alpinejs/csp` tampoco admite expresiones en línea, así que obliga a
+reescribir las mismas plantillas y encima añade una dependencia cuyos fallos
+vuelven a ser silenciosos. Y al ver el inventario, lo que se usaba de Alpine
+eran tres interruptores de mostrar/ocultar: no había framework del que
+aprovecharse.
+
+`core/static/js/ui.js` implementa los controles con atributos `data-*`, sin
+evaluación de cadenas y sin JavaScript en línea. Es mejora progresiva: sin
+JavaScript la contraseña sigue siendo un campo usable. Se reinicializa en
+`htmx:afterSwap`, porque el HTML que htmx inyecta llega sin inicializar y
+quedaría muerto — el mismo síntoma por otra vía.
+
+### Migrado y verificado (2 de 9)
+
+`accounts/login.html` y `base.html`. Verificado en navegador con la CSP
+aplicada: el tipo del campo, el `aria-label`, el `aria-pressed` y los dos
+iconos alternan correctamente, y la consola queda con **cero `EvalError`**.
+
+### Falta (7 plantillas, 51 directivas)
+
+Alpine sigue cargado porque estas lo usan, y **bajo la CSP real siguen
+muertas, igual que hoy en producción**:
+
+| Plantilla | Directivas | Nota |
+|---|---|---|
+| `tools/scanner_check.html` | 20 | Herramienta de diagnóstico, no flujo de venta. |
+| `billpay/reference.html` | 11 | |
+| `operations/card.html` | 7 | **Flujo de cobro.** Componente del tokenizador de Conekta: el que más cuidado necesita. |
+| `accounts/signup_account.html` | 6 | |
+| `operations/pay.html` | 5 | **Flujo de cobro.** Panel plegable; `ui.js` ya trae el control. |
+| `operations/receipt.html` | 1 | |
+| `accounts/_signup_shell.html` | 1 | Además un `<style>` en línea muerto. |
+
+El `<script>` de Alpine se quita cuando caiga la última.
+
+### Residuo conocido e inofensivo
+
+Queda una violación de `style-src` en consola: el `<style>` que **htmx se
+inyecta a sí mismo** para el indicador de carga. Se comprobó que no causa
+ningún defecto visual — `app.css` ya trae las reglas de `.htmx-indicator` y un
+indicador real computa `display: none`.
 
 ---
 

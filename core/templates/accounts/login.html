@@ -73,23 +73,34 @@
             <a href="{% url 'accounts:password_reset' %}"
                class="text-sm font-medium text-accent-600">Olvide mi contrasena</a>
           </div>
-          <div x-data="{ show: false }" class="relative">
-            <input :type="show ? 'text' : 'password'"
-                   type="password"
+          {# El control vive en static/js/ui.js. Nada de expresiones en linea:
+             la CSP de produccion no permite 'unsafe-eval', asi que Alpine no
+             puede evaluarlas y el boton quedaria muerto sin senal visible.
+             Verificado en navegador el 13/09/2026. #}
+          <div data-password-toggle class="relative">
+            <input type="password"
+                   data-password-input
                    name="{{ form.password.html_name }}"
                    id="{{ form.password.id_for_label }}"
                    class="input pr-12 {% if form.password.errors %}input-error{% endif %}"
                    autocomplete="current-password"
                    required
                    {% if form.password.errors %}aria-invalid="true" aria-describedby="err-password"{% endif %}>
-            <button type="button" @click="show = !show" tabindex="-1"
-                    class="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--color-ink-400)] hover:text-[var(--color-ink-700)]"
-                    :aria-label="show ? 'Ocultar contrasena' : 'Mostrar contrasena'">
-              <svg x-show="!show" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <button type="button" tabindex="-1"
+                    data-password-button
+                    data-label-mostrar="Mostrar contrasena"
+                    data-label-ocultar="Ocultar contrasena"
+                    aria-label="Mostrar contrasena"
+                    aria-pressed="false"
+                    class="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--color-ink-400)] hover:text-[var(--color-ink-700)]">
+              <svg data-icono="mostrar" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M2.04 12.32a1.01 1.01 0 0 1 0-.64C3.42 7.51 7.36 4.5 12 4.5s8.57 3.01 9.96 7.18c.07.2.07.44 0 .64C20.58 16.49 16.64 19.5 12 19.5s-8.57-3.01-9.96-7.18Z"/>
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
               </svg>
-              <svg x-show="show" x-cloak class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              {# Nace con `hidden` puesto por el servidor: asi no hay destello
+                 del icono equivocado mientras carga el JavaScript. Es lo que
+                 x-cloak intentaba resolver, resuelto un paso antes. #}
+              <svg data-icono="ocultar" hidden class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.22A10.5 10.5 0 0 0 2.04 11.68a1.01 1.01 0 0 0 0 .64C3.42 16.49 7.36 19.5 12 19.5c.99 0 1.95-.14 2.86-.4M6.23 6.23A10.45 10.45 0 0 1 12 4.5c4.64 0 8.57 3.01 9.96 7.18.07.2.07.44 0 .64a10.53 10.53 0 0 1-4.29 5.45M6.23 6.23 3 3m3.23 3.23 3.65 3.65m7.2 7.2L21 21m-3.92-3.92-3.65-3.65m0 0a3 3 0 1 0-4.24-4.24m4.24 4.24L9.88 9.88"/>
               </svg>
             </button>
@@ -161,6 +172,9 @@
 </main>
 {% endblock %}
 
-{% block extra_head %}
-<style>[x-cloak] { display: none !important; }</style>
-{% endblock %}
+{# Aqui habia <style>[x-cloak]{display:none!important}</style>. Se quito por
+   dos razones: la regla ya vive en assets/app.css (asi que era un duplicado),
+   y la CSP de produccion tiene style-src 'self' sin 'unsafe-inline', asi que
+   el navegador no creaba la hoja -- verificado en navegador: el bloque
+   reportaba "sin sheet". Un <style> en linea aqui es codigo muerto que
+   aparenta hacer algo. #}

@@ -46,7 +46,20 @@ AXES_FAILURE_LIMIT = 20
 # escribe el codigo y no el dia del despliegue.
 #
 # Se omite upgrade-insecure-requests a proposito: aqui se entra por http.
-CONTENT_SECURITY_POLICY_REPORT_ONLY = {"DIRECTIVES": DIRECTIVAS}
+#
+# CSP_ENFORCE=True aplica la politica DE VERDAD aqui, igual que produccion.
+# Es la mitad que le faltaba a la idea de arriba: el modo solo reporte avisa de
+# lo que produccion *bloquearia*, pero la pantalla sigue funcionando, asi que
+# nadie ve el sintoma. Hay fallos que solo se manifiestan cuando el navegador
+# de verdad se niega -- el caso claro es una libreria que evalua expresiones
+# con new Function(): en modo reporte funciona perfecto y en produccion queda
+# muerta sin dejar rastro visible para el cajero.
+#
+# Conviene dejarlo en True mientras se trabaja en el flujo de cobro.
+if env.bool("CSP_ENFORCE", default=False):
+    CONTENT_SECURITY_POLICY = {"DIRECTIVES": DIRECTIVAS}
+else:
+    CONTENT_SECURITY_POLICY_REPORT_ONLY = {"DIRECTIVES": DIRECTIVAS}
 MIDDLEWARE = ["csp.middleware.CSPMiddleware"] + MIDDLEWARE
 
 INSTALLED_APPS = INSTALLED_APPS + ["django_extensions"] if env.bool(

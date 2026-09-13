@@ -22,6 +22,15 @@
      que cobra dinero anade un punto de fallo y de riesgo de suministro. {% endcomment %}
   <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
 
+  {% comment %} Controles de interfaz propios (mostrar contrasena, paneles
+     plegables, avisos). Reemplazan a Alpine en las pantallas ya migradas.
+     Motivo: Alpine evalua sus expresiones construyendo funciones a partir de
+     cadenas, y la CSP de produccion no lleva 'unsafe-eval'. Con CSP_ENFORCE=True
+     se verifico en navegador que CADA directiva de Alpine lanza EvalError y el
+     control queda muerto sin senal visible para el cajero. Ver static/js/ui.js.
+     {% endcomment %}
+  <script src="{% static 'js/ui.js' %}" defer></script>
+
   {% comment %} Alpine NO se carga aqui: va al final del <body>, despues de
      extra_scripts. Alpine dispara "alpine:init" y arranca en cuanto se
      ejecuta, asi que cualquier componente registrado despues llegaria tarde y
@@ -47,10 +56,13 @@
   <div class="toast-stack no-print" id="toasts" aria-live="polite">
     {% if messages %}
       {% for message in messages %}
-        <div class="toast" role="alert" x-data="{ open: true }" x-show="open"
-             x-init="setTimeout(() => open = false, 6000)">
+        {% comment %} Sin expresiones en linea: la CSP de produccion no lleva
+           'unsafe-eval', asi que Alpine no puede evaluarlas y el aviso se
+           quedaria pegado en pantalla sin poder cerrarse. El control esta en
+           static/js/ui.js. {% endcomment %}
+        <div class="toast" role="alert" data-toast data-toast-ms="6000">
           <span class="flex-1">{{ message }}</span>
-          <button type="button" @click="open = false"
+          <button type="button" data-toast-close
                   class="shrink-0 opacity-70 hover:opacity-100" aria-label="Cerrar aviso">&times;</button>
         </div>
       {% endfor %}
