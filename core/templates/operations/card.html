@@ -28,7 +28,7 @@
   viajar al navegador. La privada no sale nunca de payments.
 {% endcomment %}
 <div class="mx-auto max-w-lg"
-     x-data="cobroConTarjeta()"
+     data-card-checkout
      data-public-key="{{ public_key }}"
      data-receipt-url="{% url 'operations:receipt' order.id %}"
      data-debug="{% if debug %}1{% else %}0{% endif %}">
@@ -88,14 +88,21 @@
   pixeles de alto y el area queda en blanco. La explicacion completa esta
   junto a la regla en app.css.
   {% endcomment %}
-  <div class="surface overflow-hidden" x-show="!procesando">
+  {# Los cuatro estados de esta pantalla se pintan desde
+     static/js/conekta-tokenizer.js poniendo y quitando el atributo `hidden`.
+     Antes eran directivas x-show de Alpine, y bajo la CSP de produccion (sin
+     'unsafe-eval') NINGUNA se evaluaba: ni "Cobrando...", ni el mensaje de
+     error, ni el aviso de respuesta indeterminada se mostraban nunca. El
+     cajero podia cobrar sin ver confirmacion ni advertencia. Verificado en
+     navegador el 13/09/2026. #}
+  <div class="surface overflow-hidden" data-card-form-area>
     <div id="conektaIframeContainer" class="conekta-tokenizer"></div>
   </div>
 
-  <p x-show="error" x-cloak class="field-error mt-3" role="alert" x-text="error"></p>
+  <p data-card-error hidden class="field-error mt-3" role="alert"></p>
 
   {# Mientras se cobra: sin boton que volver a pulsar. #}
-  <div x-show="procesando" x-cloak class="surface surface-pad text-center">
+  <div data-card-processing hidden class="surface surface-pad text-center">
     <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent-600">
       {% include "_icons.html" with name="spinner" %}
     </div>
@@ -112,7 +119,7 @@
   ni se ofrece reintentar, que es justo lo que provocaria un doble cargo. Se
   manda al comprobante, que consulta el estado real.
   {% endcomment %}
-  <div x-show="indeterminado" x-cloak class="surface surface-pad text-center">
+  <div data-card-indeterminate hidden class="surface surface-pad text-center">
     <p class="font-semibold">No recibimos confirmacion a tiempo</p>
     <p class="mt-1 text-sm text-[var(--color-ink-500)]">
       <strong>El cobro pudo haberse realizado.</strong> No vuelvas a cobrar:
@@ -124,9 +131,9 @@
 
   {# El token viaja en un POST normal, con CSRF. #}
   <form method="post" action="{% url 'operations:pay_card' order.id %}"
-        x-ref="formulario" class="hidden">
+        data-card-post-form class="hidden">
     {% csrf_token %}
-    <input type="hidden" name="card_token" x-ref="token">
+    <input type="hidden" name="card_token" data-card-token>
   </form>
 </div>
 {% endblock %}
@@ -143,9 +150,14 @@
   navegador lo bloquea al desplegar, dejando la pantalla de cobro completa
   pero sin formulario de tarjeta y sin ninguna pista de por que.
 
-  Orden importante: primero el script de Conekta, despues el nuestro. Alpine
-  se carga al final del <body> (ver base.html), asi que cuando arranca ya
-  encuentra el componente registrado.
+  Orden importante: primero el script de Conekta, despues el nuestro, que
+  comprueba que ConektaCheckoutComponents exista antes de usarlo y avisa en
+  pantalla si no llego.
+
+  Esta pantalla ya NO usa Alpine. Su estado se pinta con el atributo `hidden`
+  desde conekta-tokenizer.js, porque la CSP de produccion no lleva
+  'unsafe-eval' y las directivas de Alpine no se evaluaban: "Cobrando...", el
+  error y el aviso de respuesta indeterminada no aparecian nunca.
 {% endcomment %}
 <script src="https://pay.conekta.com/v1.0/js/conekta-checkout.min.js"></script>
 <script src="{% static 'js/conekta-tokenizer.js' %}"></script>

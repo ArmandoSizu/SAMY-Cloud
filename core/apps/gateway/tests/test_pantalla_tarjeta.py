@@ -197,8 +197,26 @@ class SinGiroInfinitoTests(SimpleTestCase):
         self.assertNotIn("retry", self.js.lower())
 
     def test_existe_el_estado_indeterminado(self) -> None:
-        self.assertIn("indeterminado", self.js)
-        self.assertIn('x-show="indeterminado"', self.html)
+        """El marcador cambio de x-show a un data-attribute, el estado no.
+
+        Antes esta prueba buscaba ``x-show="indeterminado"``. Se cambio porque
+        Alpine no funciona bajo la CSP de produccion (no lleva 'unsafe-eval'),
+        y con ella aquellas directivas nunca se evaluaban: el aviso existia en
+        el HTML y no se mostraba jamas. Lo que la prueba defiende sigue siendo
+        lo mismo: que el estado indeterminado exista y se pueda pintar.
+        """
+        self.assertIn("INDETERMINADO", self.js)
+        self.assertIn("data-card-indeterminate", self.js)
+        self.assertIn("data-card-indeterminate", self.html)
+
+    def test_el_estado_indeterminado_nace_oculto(self) -> None:
+        """Sin `hidden` en el HTML, el aviso se veria desde el primer momento.
+
+        Un "el cobro pudo haberse realizado" visible antes de cobrar nada es
+        peor que no tenerlo: entrena al cajero a ignorarlo.
+        """
+        bloque = self.html[self.html.index("data-card-indeterminate") :][:120]
+        self.assertIn("hidden", bloque)
 
     def test_el_estado_indeterminado_no_afirma_que_fallo(self) -> None:
         """Puede haberse cobrado: decir "fallo" seria mentir."""
@@ -209,7 +227,7 @@ class SinGiroInfinitoTests(SimpleTestCase):
         self.assertIn("operations:receipt", self.html)
 
     def test_no_ofrece_reintentar_el_cobro(self) -> None:
-        indeterminado = self.html[self.html.index('x-show="indeterminado"') :][:900]
+        indeterminado = self.html[self.html.index("data-card-indeterminate") :][:900]
         for tentacion in ("Reintentar", "Cobrar de nuevo", "Volver a cobrar"):
             self.assertNotIn(tentacion, indeterminado)
 

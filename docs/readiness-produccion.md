@@ -18,8 +18,11 @@ lo que este archivo existe para evitar.
 | Bandera | Valor | Verificado |
 |---|---|---|
 | `TAECEL_REGISTERED` | **TRUE** | Cuenta creada y activa. Titular comercial/fiscal: **Johany Josefina Palomino Carrillo**. |
-| `TAECEL_API_REQUESTED` | **TRUE** | Ticket de integración API / Web Service enviado a Soporte TAECEL. Esperando documentación y credenciales de pruebas. |
+| `TAECEL_API_REQUESTED` | **TRUE** | Ticket de integración API / Web Service enviado a Soporte TAECEL. |
+| `TAECEL_TECH_SURVEY_SENT` | **TRUE** | Levantamiento tecnológico entregado. |
+| `TAECEL_PENDING_TEST_CREDENTIALS` | **TRUE** | **Confirmado por Soporte:** la revisión y entrega de credenciales de prueba tarda **tiempo variable según su carga de trabajo**. No hay SLA. |
 | `TAECEL_CREDENTIALS_RECEIVED` | FALSE | — |
+| `TAECEL_FUNDING_MINIMUM` | **$5,000 MXN** | **Confirmado por Soporte:** las claves productivas exigen una primera compra/fondeo desde $5,000. **No fondear todavía** — va después de aprobar las pruebas. |
 | `TAECEL_CONTRACT_VERIFIED` | FALSE | Nadie ha leído todavía la documentación real de su web service. |
 | `TAECEL_FUNDED` | FALSE | No se ha comprado saldo. |
 | `CONEKTA_SANDBOX` | TRUE | Operando. Órdenes y webhooks reales de sandbox. |
@@ -47,6 +50,23 @@ credenciales de prueba → verificación → credenciales de producción.
 es su revisión de ingeniería. **No publican SLA para ninguno de los dos pasos
 humanos**; el "máximo 24 horas" de su sitio corresponde a *distribuidor de red
 de afiliados*, que es otro producto.
+
+### El orden, confirmado por TAECEL
+
+Nada se puede adelantar. Cada flecha es un paso que depende del anterior, y
+dos de ellas son revisiones humanas de TAECEL sin plazo publicado:
+
+```
+cuenta ✓ → levantamiento ✓ → credenciales TEST ⏳ → integración → pruebas
+  → envío de resultados → revisión TAECEL → fondeo mínimo $5,000
+  → claves PRODUCTION → mapping productivo → primera recarga real
+```
+
+**Implicación de calendario:** el fondeo de $5,000 **no** es el primer paso,
+es el penúltimo. Va *después* de que TAECEL apruebe los resultados de las
+pruebas. Con dos revisiones humanas sin SLA en el camino, la primera recarga
+real está a semanas, no a días. Hoy el cuello de botella está enteramente en
+su lado.
 
 Lo que tiene que llegar de ellos, y sin lo cual nada avanza:
 
@@ -214,7 +234,7 @@ Solo entonces existe un producto vendible, y sigue siendo en sandbox.
 |---|---|
 | Separación SANDBOX/PRODUCTION | ✅ **Hecha.** Ver abajo. |
 | Motor de precios / `Cotizacion` | ✅ **Hecho.** `samy_common/pricing.py`, módulo puro, 31 pruebas. Falta que Sizú elija la política y que TAECEL diga su comisión. |
-| CSP en modo `enforce` | ⚠️ **Ya estaba en enforce, y Alpine está muerto bajo ella.** Reproducido en navegador. Migración en curso: 2 de 9 plantillas. Ver abajo. |
+| CSP en modo `enforce` | ⚠️ Ya estaba en enforce, y Alpine estaba muerto bajo ella. **El flujo de cobro ya está migrado y verificado (4 de 9 plantillas).** Quedan 5, ninguna en el camino del dinero. Ver abajo. |
 | Idempotencia de extremo a extremo | Pendiente. |
 | Conciliación automática | Pendiente. Hay comando documentado, sin ejecutar. |
 | Comprobante productivo | Pendiente. |
@@ -301,13 +321,29 @@ JavaScript la contraseña sigue siendo un campo usable. Se reinicializa en
 `htmx:afterSwap`, porque el HTML que htmx inyecta llega sin inicializar y
 quedaría muerto — el mismo síntoma por otra vía.
 
-### Migrado y verificado (2 de 9)
+### Migrado y verificado (4 de 9) — **el flujo de cobro completo**
 
-`accounts/login.html` y `base.html`. Verificado en navegador con la CSP
-aplicada: el tipo del campo, el `aria-label`, el `aria-pressed` y los dos
-iconos alternan correctamente, y la consola queda con **cero `EvalError`**.
+| Plantilla | Qué estaba muerto | Verificación |
+|---|---|---|
+| `accounts/login.html` | Mostrar/ocultar contraseña. | Navegador: tipo de campo, `aria-label`, `aria-pressed` y los dos iconos alternan; cero `EvalError`. |
+| `base.html` | El aviso no se podía cerrar ni se cerraba solo. | Migrado a `data-toast`. |
+| `operations/pay.html` | **El panel de cobro en efectivo no se abría.** El método de pago quedaba inaccesible. | Migrado a `data-collapsible`. |
+| `operations/card.html` | **«Cobrando…», el mensaje de error y el aviso de respuesta indeterminada no se mostraban nunca.** | Navegador: el estado de fallo se pinta con su texto real; cero `EvalError`. |
 
-### Falta (7 plantillas, 51 directivas)
+`card.html` era el peor de los cuatro. Los tres paneles dependían de `x-show`,
+así que bajo la CSP el cajero podía cobrar **sin ver confirmación, sin ver el
+error de la tarjeta y sin ver el aviso de «el cobro pudo haberse realizado»** —
+justo el aviso que existe para que no cobre dos veces.
+
+`conekta-tokenizer.js` se reescribió sin Alpine conservando intactas las
+garantías del cobro: límite de 45 s (mayor que los 30 s + 20 s del servidor),
+`AbortController`, **cero reintentos automáticos**, y el estado indeterminado
+que manda al comprobante en vez de ofrecer reintentar. Además los cuatro
+estados ahora se pintan desde un solo sitio y son excluyentes; antes eran tres
+banderas independientes y nada impedía que «Cobrando…» y un error se mostraran
+a la vez.
+
+### Falta (5 plantillas, 39 directivas) — ninguna en el flujo de cobro
 
 Alpine sigue cargado porque estas lo usan, y **bajo la CSP real siguen
 muertas, igual que hoy en producción**:
@@ -315,10 +351,8 @@ muertas, igual que hoy en producción**:
 | Plantilla | Directivas | Nota |
 |---|---|---|
 | `tools/scanner_check.html` | 20 | Herramienta de diagnóstico, no flujo de venta. |
-| `billpay/reference.html` | 11 | |
-| `operations/card.html` | 7 | **Flujo de cobro.** Componente del tokenizador de Conekta: el que más cuidado necesita. |
-| `accounts/signup_account.html` | 6 | |
-| `operations/pay.html` | 5 | **Flujo de cobro.** Panel plegable; `ui.js` ya trae el control. |
+| `billpay/reference.html` | 11 | Pago de servicios, que sigue pendiente de contrato. |
+| `accounts/signup_account.html` | 6 | Alta de cuenta. |
 | `operations/receipt.html` | 1 | |
 | `accounts/_signup_shell.html` | 1 | Además un `<style>` en línea muerto. |
 
