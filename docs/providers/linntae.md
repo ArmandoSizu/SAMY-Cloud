@@ -533,13 +533,67 @@ No está activada y no se activa por accidente. Hacen falta, a la vez:
 Mientras el README diga "Linntae DEMO integration", producción no está
 certificada. No se cambia esa frase hasta que lo esté.
 
-## 17. Primer intento contra PRODUCCIÓN (2026-09-13)
+## 17. PRODUCCIÓN: lecturas verificadas (2026-09-13)
 
-Linntae otorgó accesos productivos para la cuenta **Cajero Web Service
-105225**. Se apuntó SAMY a producción en modo estrictamente de lectura y
-**la autenticación fue rechazada**. Queda aquí porque el resultado importa
-tanto como el éxito habría importado, y porque el próximo intento debe
-empezar sabiendo qué ya se descartó.
+Con el **segundo** juego de credenciales productivas, la cuenta autentica y las
+seis lecturas responden `HTTP 200`. Lo que sigue son cifras de PRODUCCIÓN y no
+se mezclan con las de DEMO.
+
+| Dato | Valor |
+|---|---|
+| `supportId` | `105225` |
+| Host | `api.linn.mx` |
+| Esquema | id `1` — *1.-COMISION SOBRE VENTA (tiempo aire y pago de servicios)* |
+| Saldo plataforma | `$200.00 MXN` |
+| Saldo comisión | `$0.00 MXN` (la bolsa existe y está en cero) |
+| Saldo servicios | no viene en la respuesta |
+| Catálogo | 64 compañías, 760 ofertas, 256 con SKU |
+| `taeCompanies` | 8 operadores, 96 ofertas |
+| `taeVirtualCompanies` | 56 operadores, 665 ofertas |
+| Comisiones | 320 filas, guardadas en `ProviderCommission` con fecha |
+| 401 / 403 / 500 | ninguno |
+
+`config/getProductsCommissions` **funciona en producción** — en DEMO devolvía
+`HTTP 500`. Las tasas: 6% por operador para TELCEL, TELCEL SIN LIMITES, TELCEL
+INTERNET, MOVISTAR, AT&T, UNEFON, VIRGIN y OUI MOVIL; 5% por SKU para los 56
+operadores virtuales; y sin tasa legible para las ~230 filas de servicios,
+tarjetas de regalo y peaje.
+
+TELCEL trae 10 denominaciones: `idOffer` 96, 1, 2, 3, 452, 4, 5, 6, 7, 8 para
+$10, $20, $30, $50, $80, $100, $150, $200, $300 y $500.
+
+### Lo que esto cambia sobre el mecanismo de comisión, y lo que no
+
+Dos datos nuevos apuntan en la misma dirección: el esquema de la cuenta se
+llama literalmente *COMISIÓN SOBRE VENTA* y el saldo llega partido en dos
+bolsas, con la de comisión en `$0.00` antes de la primera venta. Eso es
+compatible con `COMISION_ACREDITADA_APARTE` y **no** con un descuento por
+transacción.
+
+Sigue siendo inferencia. `LINNTAE_COMMISSION_MECHANISM` se queda en
+`SIN_DETERMINAR` hasta medirlo: saldo de las dos bolsas antes y después de una
+recarga real. `TOPUP_MEDIR_SALDO_PROVIDERS=linntae` ya lo captura en
+`TopupFulfillment.economia`. Poner el mecanismo por parecido sería fijar
+precios con un margen que nadie comprobó.
+
+### Discrepancias entre las tres puertas del catálogo
+
+También en producción, y las caza el propio diagnóstico:
+
+* UNEFON (`idOperator 3`): `syncProducts` 11 ofertas, `taeCompanies` 10.
+* FLASH MOBILE (`idOperator 30`): `syncProducts` 15, `taeVirtualCompanies` 16.
+* Turbo Cel (`idOperator 269`): `syncProducts` 3, `taeVirtualCompanies` 4.
+
+El emparejamiento comercial lee `syncProducts`. Una oferta que solo existe por
+la otra puerta se vería vendible y fallaría con el cobro ya hecho, así que
+ninguno de esos tres operadores se habilita sin resolver la diferencia con
+Linntae.
+
+## 18. Primer intento contra PRODUCCIÓN, que falló (2026-09-13)
+
+El **primer** juego de credenciales productivas fue rechazado. Queda escrito
+porque lo que se descartó entonces sigue valiendo: ahorra repetir el
+diagnóstico si vuelve a pasar.
 
 ### Lo que se observó
 
@@ -573,14 +627,13 @@ transporte. Eso descarta, con evidencia y no por suposición:
   entrega 20 caracteres, ASCII, sin comillas, sin espacios al borde, **y el
   `#` sigue dentro**. Lo que hay en el archivo es lo que sale por la red.
 
-### Lo que queda por confirmar, y es de Linntae
+### Cómo se resolvió
 
-Que la cuenta productiva esté dada de alta y activa para la API, y cuál es
-exactamente el `username` que espera su lado (el nombre comercial de la cuenta
-lleva espacios; el `.env` lleva una forma sin ellos). Ninguna de las dos cosas
-se puede averiguar desde aquí sin probar credenciales, que es justo lo que no
-se hace.
+Linntae emitió un segundo juego de credenciales para la misma cuenta y ese sí
+autentica (sección 17). La causa exacta del rechazo del primero no la sabemos
+y no hace falta saberla: era de su lado, como decía la evidencia.
 
-Mientras tanto los tres candados siguen cerrados y `linntae_diagnostico` los
-imprime en cada corrida: ambiente del servicio, autorización para mover dinero
-y `typeBalance`. Apuntar a producción no abrió ninguno.
+Los tres candados siguen cerrados y `linntae_diagnostico` los imprime en cada
+corrida: ambiente del servicio, autorización para mover dinero y `typeBalance`.
+Autenticar contra producción no abrió ninguno, que es exactamente lo que debía
+pasar.

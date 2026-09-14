@@ -275,12 +275,27 @@ class Command(BaseCommand):
         return avisos
 
     def _saldos(self, proveedor: Any) -> dict[str, Any]:
+        """Los saldos tal como Linntae los reporta. Cero es un dato, no un hueco.
+
+        Las comparaciones son ``is not None`` y no ``if saldo`` porque
+        ``Money.__bool__`` es ``cents != 0``: con la forma corta, una bolsa de
+        comision en **$0.00** -que es lo que devuelve una cuenta productiva
+        antes de su primera venta- se imprimia como ``None``. Y ``None``
+        significa otra cosa: que el proveedor no mando el campo. Quien lee el
+        reporte se pone a buscar un campo faltante que si llego, y que dice
+        cero.
+        """
         saldos = proveedor.saldos()
         return {
-            "plataforma": str(saldos.plataforma) if saldos.plataforma else None,
-            "plataforma_cents": saldos.plataforma.cents if saldos.plataforma else None,
-            "comision": str(saldos.comision) if saldos.comision else None,
-            "servicios": str(saldos.servicios) if saldos.servicios else None,
+            "plataforma": str(saldos.plataforma) if saldos.plataforma is not None else None,
+            "plataforma_cents": (
+                saldos.plataforma.cents if saldos.plataforma is not None else None
+            ),
+            "comision": str(saldos.comision) if saldos.comision is not None else None,
+            "comision_cents": (
+                saldos.comision.cents if saldos.comision is not None else None
+            ),
+            "servicios": str(saldos.servicios) if saldos.servicios is not None else None,
             "crudos": saldos.crudos,
         }
 

@@ -104,12 +104,14 @@ saldo antes y después de cada recarga y lo guarda en
 ### Lo que falta de Linntae, exclusivamente
 
 1. ~~Credenciales DEMO en `.env`~~ — puestas, y las lecturas DEMO corrieron.
-2. **Credenciales PRODUCTIVAS que autentiquen.** Linntae entregó accesos para
-   *Cajero Web Service 105225* y su `/getToken` productivo las rechaza con
-   `code 4`, "Datos de usuario o contraseña incorrectos" (HTTP 200, sin
-   geobloqueo, sin 401/403, y con la contraseña llegando íntegra desde el
-   `.env` — ver `docs/providers/linntae.md`, sección 17). Es de su lado.
-3. Confirmación escrita de `typeBalance` para nuestra cuenta.
+2. ~~Credenciales PRODUCTIVAS que autentiquen~~ — el segundo juego funciona.
+   `supportId 105225`, las seis lecturas en `HTTP 200`, saldo de plataforma
+   $200.00 y 320 comisiones guardadas con fecha. Ver
+   `docs/providers/linntae.md`, sección 17.
+3. **Confirmación escrita de `typeBalance` para nuestra cuenta.** Es hoy el
+   único bloqueo que no depende de una decisión nuestra. Producción muestra dos
+   bolsas —plataforma y comisión— así que `typeBalance` casi seguro elige entre
+   ellas; "casi seguro" no alcanza para mandar una compra.
 4. Autorización explícita de Sizú para la primera recarga.
 5. La medición del mecanismo de comisión (sale de esa misma recarga).
 6. Acuerdo sobre países / IPs permitidas, **antes de elegir región de nube**:
