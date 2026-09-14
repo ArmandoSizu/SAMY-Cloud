@@ -15,6 +15,20 @@ urlpatterns = [
     # formulario cuando un cobro falla, porque el token es de un solo uso.
     path("<uuid:order_id>/cobrar/tarjeta/", views.card_form, name="card"),
     path("<uuid:order_id>/cobrar/tarjeta/procesar/", views.pay_card, name="pay_card"),
+    # Segunda confirmacion. Separada del cobro porque cobrar el efectivo y
+    # gastar saldo del proveedor son dos hechos distintos, y el segundo no se
+    # deshace. GET pregunta, POST ejecuta: asi un F5 sobre la pantalla no
+    # manda nada.
+    path(
+        "<uuid:order_id>/confirmar-recarga/",
+        views.confirm_topup,
+        name="confirm_topup",
+    ),
+    path(
+        "<uuid:order_id>/confirmar-recarga/ejecutar/",
+        views.execute_topup,
+        name="execute_topup",
+    ),
     path("<uuid:order_id>/comprobante/", views.receipt, name="receipt"),
     path("<uuid:order_id>/estado/", views.order_status, name="status"),
 ]

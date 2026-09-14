@@ -1,0 +1,85 @@
+# =============================================================================
+# SAMY Cloud - Entrada para Cloud Run
+# =============================================================================
+#
+# Este archivo NO sustituye a infra/gateway/Caddyfile. Aquel sigue siendo el de
+# desarrollo con docker compose, donde cada servicio es un contenedor con su
+# propio nombre de red. Aqui los cuatro servicios Django corren DENTRO del
+# mismo contenedor, en 127.0.0.1, porque Cloud Run despliega un contenedor por
+# servicio y no da red interna entre ellos.
+#
+# Es una concesion del despliegue, no de la arquitectura: el codigo sigue
+# separado en cuatro servicios que se hablan por HTTP firmado. Separarlos en
+# cuatro servicios de Cloud Run mas adelante toca este archivo y el entrypoint,
+# no la aplicacion.
+#
+# TRES DIFERENCIAS QUE IMPORTAN
+# -----------------------------
+#
+# 1. Escucha en {$PORT}. Cloud Run inyecta ese puerto y exige que el contenedor
+#    escuche AHI; un puerto fijo hace que el despliegue falle con "container
+#    failed to start and listen".
+#
+# 2. auto_https off. El TLS lo termina Cloud Run antes de llegar aqui. Si Caddy
+#    intentara emitir su propio certificado pediria el 443, que no tiene.
+#
+# 3. X-Forwarded-Proto va FIJO en https, y esto es lo unico no obvio del
+#    archivo. Caddy, por omision, pone en esa cabecera el esquema de la
+#    conexion que EL recibe, que aqui es http porque Cloud Run ya desenvolvio
+#    el TLS. Y produccion tiene SECURE_SSL_REDIRECT=True con
+#    SECURE_PROXY_SSL_HEADER leyendo justo esa cabecera. El resultado seria un
+#    bucle infinito de redirecciones: Django ve "http", redirige a https, Cloud
+#    Run entrega la peticion otra vez como http. Se fija a mano porque en
+#    *.run.app siempre es cierto: la aplicacion solo se sirve por HTTPS.
+#
+# Los estaticos NO se sirven desde aqui. El Core usa WhiteNoise
+# (CompressedManifestStaticFilesStorage), que ya los sirve con sus nombres
+# hasheados y su cache larga. Duplicar eso en Caddy obligaria a mantener dos
+# fuentes de verdad para el mismo archivo.
+# =============================================================================
+
+{
+	auto_https off
+	admin off
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+:{$PORT:8080} {
+	encode zstd gzip
+
+	# Salud para Cloud Run. Contesta Caddy y no Django a proposito: responde
+	# aunque los gunicorn tarden en levantar, que es lo que evita que Cloud Run
+	# mate el contenedor durante el arranque.
+	handle /_caddy/health {
+		respond "ok" 200
+	}
+
+	# Webhook de Conekta. Se deja enrutado aunque Conekta no este en el flujo
+	# de hoy: sin llaves de produccion no puede llegar nada por aqui, y quitar
+	# la ruta para volver a ponerla despues es mas trabajo que dejarla.
+	#
+	# La firma de Conekta es RSA sobre los BYTES EXACTOS del cuerpo, asi que
+	# esto tiene que ser un proxy y nunca una vista que releea el JSON.
+	handle /webhooks/conekta/* {
+		rewrite * /api/v1/webhooks/conekta/
+		reverse_proxy 127.0.0.1:8002 {
+			header_up Host localhost
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# Todo lo demas al Core. Los otros tres servicios NO se exponen: solo el
+	# Core los llama, por 127.0.0.1 y con peticiones firmadas S2S. Por eso no
+	# existe ninguna ruta publica capaz de ejecutar una recarga.
+	handle {
+		reverse_proxy 127.0.0.1:8001 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto https
+		}
+	}
+}

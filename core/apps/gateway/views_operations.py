@@ -167,6 +167,13 @@ def pay_cash(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
     )
 
     request.session[f"change_{order_id}"] = result.get("change_cents", 0)
+
+    # El efectivo ya entro; la recarga todavia no sale. Antes esto iba directo
+    # al comprobante y la recarga la mandaba un worker por su cuenta. Ahora
+    # pasa por una segunda confirmacion explicita: son dos hechos distintos y
+    # el segundo gasta saldo real del proveedor.
+    if _get_fulfillment(order):
+        return redirect("operations:confirm_topup", order_id=order_id)
     return redirect("operations:receipt", order_id=order_id)
 
 
@@ -339,6 +346,111 @@ def receipt(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
             "change_display": _money(change_cents) if change_cents else "",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Segunda confirmacion: la que gasta dinero
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_perm("operation.create")
+@require_GET
+def confirm_topup(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
+    """Pantalla que avisa que el siguiente clic gasta saldo real.
+
+    Cobrar el efectivo y mandar la recarga eran un solo paso. Se separaron a
+    proposito: son dos hechos distintos -entro dinero, salio servicio- y el
+    segundo consume saldo del proveedor, que es dinero que ya esta gastado y
+    no se recupera con un boton. Una pantalla que lo diga antes convierte un
+    descuido en una pregunta.
+    """
+    order = _get_order(request, order_id)
+    fulfillment = _get_fulfillment(order)
+
+    if not fulfillment:
+        messages.error(request, "Esta orden no tiene una recarga asociada.")
+        return redirect("operations:receipt", order_id=order_id)
+
+    # Si ya se ejecuto, esta pantalla no tiene nada que preguntar. Volver a
+    # mostrarla invitaria a confirmar algo que ya paso.
+    if str(fulfillment.get("state") or "") not in ("PENDING_PAYMENT", "QUEUED"):
+        return redirect("operations:receipt", order_id=order_id)
+
+    return render(
+        request,
+        "operations/confirm_topup.html",
+        {"order": order, "fulfillment": fulfillment},
+    )
+
+
+@login_required
+@require_perm("operation.create")
+@require_POST
+def execute_topup(request: HttpRequest, order_id: uuid.UUID) -> HttpResponse:
+    """Manda la recarga. Una vez.
+
+    La proteccion contra el doble clic no esta en el boton -eso es cortesia,
+    no seguridad- sino en tres capas del servidor: la clave de idempotencia
+    se deriva de la ORDEN, el servicio de Recargas rechaza cualquier estado
+    que no sea pagado-y-en-cola, y la fila se toma con ``select_for_update``
+    antes de pasar a SENT. Las tres viven en PostgreSQL, asi que un reinicio
+    de Cloud Run no las borra.
+    """
+    order = _get_order(request, order_id)
+    fulfillment = _get_fulfillment(order)
+
+    if not fulfillment:
+        messages.error(request, "Esta orden no tiene una recarga asociada.")
+        return redirect("operations:receipt", order_id=order_id)
+
+    estado_previo = str(fulfillment.get("state") or "")
+
+    try:
+        respuesta = topups_client().post(
+            f"/api/v1/topups/{fulfillment['id']}/ejecutar/",
+            payload={
+                "store_id": str(request.store.id),
+                "actor_id": str(request.user.id),
+            },
+            # Por ORDEN, no por peticion: dos clics son la misma operacion.
+            idempotency_key=idem_clave("ejecutar", order_id),
+        )
+        resultado = respuesta.data or {}
+    except ProviderNotConfigured as exc:
+        return render(
+            request,
+            "topups/provider_unavailable.html",
+            {"message": exc.message, "missing_requirements": list(exc.missing_requirements)},
+            status=503,
+        )
+    except ProviderError as exc:
+        # El error se muestra en el comprobante, que ya sabe pintar estados no
+        # felices. Aqui no se afirma nada sobre si la recarga salio o no: eso
+        # lo dice el estado que quedo guardado.
+        log.error(
+            "topup_execution_request_failed",
+            order_id=str(order_id),
+            error=exc.message,
+        )
+        messages.error(request, exc.message)
+        return redirect("operations:receipt", order_id=order_id)
+
+    audit.record(
+        request,
+        AuditAction.PAYMENT_CONFIRMED,
+        object_type="TopupFulfillment",
+        object_id=str(fulfillment["id"]),
+        previous_state=estado_previo,
+        new_state=str(resultado.get("state") or ""),
+        metadata={
+            "accion": "ejecutar_recarga",
+            "provider_slug": resultado.get("provider_slug", ""),
+            "provider_mode": resultado.get("provider_mode", ""),
+            "provider_reference": resultado.get("provider_reference", ""),
+        },
+    )
+
+    return redirect("operations:receipt", order_id=order_id)
 
 
 def _buscar_usuario(user_id: object):

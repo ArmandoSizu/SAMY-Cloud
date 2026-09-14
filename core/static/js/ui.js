@@ -210,11 +210,49 @@
     });
   }
 
+  // Un formulario que solo se envia una vez.
+  //
+  // La proteccion de verdad contra la doble recarga esta en el servidor
+  // (clave de idempotencia por orden, estado en PostgreSQL y
+  // select_for_update sobre la fila). Esto es lo otro que hace falta: que
+  // quien da el clic VEA que paso algo. Sin esto, el primer clic no cambia
+  // nada en pantalla durante los dos o tres segundos que tarda el proveedor,
+  // y la reaccion natural es volver a picarle.
+  //
+  // Se desactiva el boton y se cambia su texto, no se bloquea el envio con
+  // preventDefault: si algo falla en este JavaScript, el formulario debe
+  // seguir enviandose. Un adorno roto no puede impedir cobrar.
+  function iniciarEnvioUnico(formulario) {
+    var enviado = false;
+    formulario.addEventListener("submit", function () {
+      if (enviado) {
+        return;
+      }
+      enviado = true;
+      var boton = formulario.querySelector("[data-submit-once-button]");
+      if (!boton) {
+        return;
+      }
+      var etiqueta = boton.getAttribute("data-submit-once-label");
+      if (etiqueta) {
+        boton.textContent = etiqueta;
+      }
+      // Deshabilitar ANTES de que el navegador serialice el formulario le
+      // quitaria el valor al boton si alguna vez lleva name/value. Se hace
+      // en el siguiente tick por eso.
+      window.setTimeout(function () {
+        boton.disabled = true;
+        boton.setAttribute("aria-busy", "true");
+      }, 0);
+    });
+  }
+
   function iniciarTodo(raiz) {
     porCada("[data-password-toggle]", raiz, iniciarPassword);
     porCada("[data-collapsible]", raiz, iniciarPlegable);
     porCada("[data-toast]", raiz, iniciarToast);
     porCada("[data-print]", raiz, iniciarImprimir);
+    porCada("[data-submit-once]", raiz, iniciarEnvioUnico);
   }
 
   if (document.readyState === "loading") {

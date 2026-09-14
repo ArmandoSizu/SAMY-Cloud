@@ -8,11 +8,20 @@ un endpoint que recargue directamente.
 
 from __future__ import annotations
 
+import structlog
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
+
+from samy_common.providers.exceptions import (
+    ProviderError,
+    ProviderIndeterminateError,
+)
+from samy_common.states import FulfillmentState
+
+log = structlog.get_logger("fulfillment.api")
 
 from apps.api.idempotency import idempotent
 from apps.fulfillment import services
@@ -129,4 +138,102 @@ def topup_detail(request: Request, fulfillment_id: str) -> Response:
         queryset = queryset.filter(store_id=store_id)
 
     fulfillment = get_object_or_404(queryset, pk=fulfillment_id)
+    return Response(TopupFulfillmentSerializer(fulfillment).data)
+
+
+@extend_schema(
+    responses={200: TopupFulfillmentSerializer},
+    description=(
+        "Ejecuta AHORA una recarga cuya orden ya esta pagada. No es un atajo "
+        "para recargar: execute_topup vuelve a preguntarle al servicio de "
+        "Pagos si la orden esta pagada y se niega si no lo esta."
+    ),
+)
+@api_view(["POST"])
+@idempotent(scope="topups:execute")
+def ejecutar_recarga(request: Request, fulfillment_id: str) -> Response:
+    """Ejecucion sincrona de una recarga ya pagada.
+
+    POR QUE EXISTE, SI YA HAY UN WORKER
+    -----------------------------------
+    El camino normal es asincrono: el evento de pago confirmado llega por el
+    outbox y un worker de Celery llama a ``execute_topup``. Eso esta bien en un
+    servidor que no se apaga.
+
+    En Cloud Run la instancia se apaga cuando no hay trafico, y un worker que
+    desaparece entre "cobre el efectivo" y "manda la recarga" deja al cliente
+    pagado y sin servicio, sin nadie mirando. Este endpoint hace que la
+    ejecucion ocurra DENTRO de la peticion en la que una persona autorizada
+    confirmo la recarga: mientras esa peticion vive, el contenedor vive.
+
+    QUE NO CAMBIA
+    -------------
+    Ni una de las guardas. ``execute_topup`` sigue verificando el pago contra
+    el servicio de Pagos, sigue exigiendo ``ensure_ready()`` -ambiente,
+    credenciales y la bandera de dinero- y sigue tomando ``select_for_update``
+    sobre la fila antes de pasar a SENT. Dos peticiones simultaneas no pueden
+    mandar dos recargas: la segunda encuentra el estado ya movido.
+
+    Y el estado vive en PostgreSQL, no en Redis ni en memoria: si Cloud Run
+    reinicia, una recarga SUCCEEDED sigue siendo SUCCEEDED y este endpoint la
+    devuelve tal cual sin volver a llamar al proveedor.
+    """
+    from django.shortcuts import get_object_or_404
+
+    queryset = TopupFulfillment.objects.select_related("product", "product__operator")
+    # Misma barrera que en la consulta: una tienda no toca las recargas de
+    # otra, y el fallo es 404 y no 403 para no confirmar que el id existe.
+    if store_id := (request.data or {}).get("store_id"):
+        queryset = queryset.filter(store_id=store_id)
+
+    fulfillment = get_object_or_404(queryset, pk=fulfillment_id)
+
+    # Terminal: se responde el estado guardado y NO se llama al proveedor.
+    # Es la defensa contra el doble clic y contra el reintento de Cloud Run, y
+    # esta antes de cualquier otra cosa a proposito.
+    if fulfillment.state_enum in {
+        FulfillmentState.SUCCEEDED,
+        FulfillmentState.FAILED,
+        FulfillmentState.REVERSED,
+        FulfillmentState.UNDER_REVIEW,
+        FulfillmentState.SENT,
+    }:
+        return Response(TopupFulfillmentSerializer(fulfillment).data)
+
+    try:
+        fulfillment = services.execute_topup(fulfillment=fulfillment)
+    except ProviderIndeterminateError as exc:
+        # No se sabe si la recarga se aplico. NO se reintenta: se deja para
+        # revision humana, que es lo que pidio el dueno del saldo.
+        log.error(
+            "topup_execution_indeterminate",
+            fulfillment_id=str(fulfillment.id),
+            error=exc.message,
+        )
+        fulfillment.refresh_from_db()
+        return Response(
+            {
+                "error": {
+                    "code": "topup_indeterminate",
+                    "message": exc.message,
+                },
+                "topup": TopupFulfillmentSerializer(fulfillment).data,
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+    except ProviderError as exc:
+        log.warning(
+            "topup_execution_failed",
+            fulfillment_id=str(fulfillment.id),
+            error=exc.message,
+        )
+        fulfillment.refresh_from_db()
+        return Response(
+            {
+                "error": {"code": exc.code, "message": exc.message},
+                "topup": TopupFulfillmentSerializer(fulfillment).data,
+            },
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
     return Response(TopupFulfillmentSerializer(fulfillment).data)

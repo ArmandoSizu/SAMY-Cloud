@@ -1,0 +1,109 @@
+{% extends "_app.html" %}
+
+{% block title %}Confirmar recarga real &middot; {{ BRAND_FULL }}{% endblock %}
+
+{% comment %}
+  La pantalla que gasta dinero.
+
+  Existe porque cobrar el efectivo y mandar la recarga eran un solo clic, y no
+  son un solo hecho: el primero mete dinero al cajon y el segundo consume
+  saldo del proveedor, que no se recupera. El aviso va en el cuerpo de la
+  pantalla y no en letra chica, y el boton dice lo que hace.
+
+  El monto y el numero llevan el peso tipografico porque son los dos datos
+  cuya equivocacion cuesta dinero.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-lg">
+
+  <header class="mb-5">
+    <div class="mb-2 flex flex-wrap items-center gap-2">
+      <span class="badge badge-neutral">{{ order.folio }}</span>
+      <span class="badge badge-success"><span class="badge-dot"></span>Efectivo recibido</span>
+      {% if fulfillment.provider_mode == "PRODUCTION" %}
+        <span class="badge badge-warning">PRODUCCION</span>
+      {% elif fulfillment.provider_mode %}
+        <span class="badge badge-neutral">Sandbox</span>
+      {% endif %}
+    </div>
+    <h1 class="text-2xl font-semibold tracking-tight">Recarga real</h1>
+    <p class="mt-1 text-[var(--color-ink-500)]">
+      El pago ya quedo registrado. Falta enviar la recarga al operador.
+    </p>
+  </header>
+
+  <div class="surface surface-pad">
+    <div class="border-b pb-5 text-center border-ink-200">
+      <p class="text-xs uppercase tracking-wider text-ink-400">Recargar a</p>
+      <p class="mt-1 text-3xl font-semibold tabular tracking-tight">{{ fulfillment.phone_masked }}</p>
+      <p class="mt-1.5 text-sm text-[var(--color-ink-500)]">
+        {{ fulfillment.operator_name }}
+      </p>
+    </div>
+
+    <dl class="space-y-2.5 py-5">
+      <div class="flex justify-between gap-4">
+        <dt class="text-[var(--color-ink-600)]">Operador</dt>
+        <dd class="text-right font-medium">{{ fulfillment.operator_name }}</dd>
+      </div>
+      <div class="flex justify-between gap-4">
+        <dt class="text-[var(--color-ink-600)]">Producto</dt>
+        <dd class="text-right font-medium">{{ fulfillment.product_label }}</dd>
+      </div>
+      <div class="flex justify-between gap-4">
+        <dt class="text-[var(--color-ink-600)]">Numero</dt>
+        <dd class="text-right font-medium tabular">{{ fulfillment.phone_masked }}</dd>
+      </div>
+    </dl>
+
+    <div class="flex items-baseline justify-between border-t pt-4 border-ink-200">
+      <span class="text-sm font-semibold uppercase tracking-wider text-ink-500">Monto</span>
+      <span class="text-3xl font-semibold tabular tracking-tight">{{ fulfillment.amount_display }}</span>
+    </div>
+  </div>
+
+  {# El aviso. No es decoracion: es la unica oportunidad de detenerse. #}
+  <div class="surface surface-pad mt-4 border-warning-300 bg-warning-50">
+    <div class="flex items-start gap-3">
+      <span class="mt-0.5 shrink-0 text-warning-600">
+        {% include "_icons.html" with name="alert" %}
+      </span>
+      <div>
+        <p class="font-semibold">Esta operacion utilizara saldo REAL de Linntae.</p>
+        <p class="mt-1 text-sm text-[var(--color-ink-600)]">
+          Se envia una sola peticion al proveedor y el saldo se descuenta en
+          ese momento. No se puede deshacer desde aqui.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-5 space-y-3">
+    {# POST y no enlace: un GET que gasta dinero se ejecuta con un F5, con el
+       boton de atras del navegador y con cualquier precargador de enlaces. #}
+    <form method="post" action="{% url 'operations:execute_topup' order.id %}"
+          data-submit-once>
+      {% csrf_token %}
+      {# El servidor ya impide la doble recarga (clave por orden, estado en
+         PostgreSQL y select_for_update). Esto solo evita que el cajero vea
+         dos clics sin respuesta y crea que no paso nada. El control esta en
+         static/js/ui.js: la CSP de produccion no permite JavaScript en
+         linea. #}
+      <button type="submit" class="btn btn-primary btn-block btn-lg"
+              data-submit-once-button
+              data-submit-once-label="Enviando recarga...">
+        Confirmar recarga
+      </button>
+    </form>
+
+    <a href="{% url 'operations:receipt' order.id %}" class="btn btn-ghost btn-block">
+      Cancelar
+    </a>
+    <p class="text-center text-xs text-[var(--color-ink-400)]">
+      Cancelar no devuelve el efectivo: la orden queda pagada y sin recargar,
+      y puedes retomarla desde el historial.
+    </p>
+  </div>
+</div>
+{% endblock %}
