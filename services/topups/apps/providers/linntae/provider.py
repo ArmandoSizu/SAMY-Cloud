@@ -418,7 +418,18 @@ class LinntaeProvider(TopupProvider):
           ``provider_family``, y sin familia el emparejamiento por identidad
           exacta no puede distinguir un saldo de un paquete del mismo precio.
         """
-        self.ensure_ready()
+        # Deliberadamente NO llama a ``ensure_ready()``.
+        #
+        # Leer el catalogo es una LECTURA: no mueve un peso. Pero
+        # ``ensure_ready()`` exige ademas ``ALLOW_REAL_PROVIDER_TRANSACTIONS``,
+        # asi que importar el catalogo obligaba a encender la bandera que
+        # autoriza gastar dinero. Eso invierte el sentido de la bandera:
+        # acabas prendiendo el interruptor del dinero para hacer algo que no
+        # cuesta nada, y se queda prendido.
+        #
+        # La guarda que SI importa aqui -que el ambiente y el host concuerden,
+        # para no mezclar catalogo de demo con produccion- la sigue aplicando
+        # ``catalogo_crudo()`` a traves de ``exigir_ambiente_coherente()``.
         catalogo = self.catalogo_crudo()
 
         productos: list[CatalogProduct] = []
