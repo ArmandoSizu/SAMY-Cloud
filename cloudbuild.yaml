@@ -1,0 +1,72 @@
+# =============================================================================
+# SAMY Cloud - Construccion de la imagen de Cloud Run
+# =============================================================================
+#
+# POR QUE EXISTE ESTE ARCHIVO
+# ---------------------------
+# ``gcloud builds submit --tag`` construye con el Dockerfile que encuentre en
+# la raiz del contexto y no tiene forma de apuntar a otro. El nuestro esta en
+# infra/docker/cloudrun.Dockerfile, deliberadamente: la raiz no debe llenarse
+# de Dockerfiles, y el de desarrollo (infra/docker/django.Dockerfile) sigue
+# existiendo y no se toca.
+#
+# La alternativa era copiar el Dockerfile a la raiz antes de cada build. Eso
+# funciona hasta el dia que alguien edita la copia y no el original.
+#
+# USO
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions=_IMAGE=us-central1-docker.pkg.dev/PROYECTO/samy/samy-cloud
+#
+# _IMAGE va SIN etiqueta. Las etiquetas las pone este archivo:
+#
+#   :latest    la que despliega Cloud Run.
+#   :$BUILD_ID la que permite volver a una imagen concreta sin reconstruir,
+#              que es lo que hace falta el dia que un despliegue sale mal.
+#
+# Se usa $BUILD_ID y no $SHORT_SHA porque $SHORT_SHA solo lo rellena Cloud
+# Build cuando la fuente es un commit de un repositorio conectado. Subiendo
+# desde Cloud Shell llega vacio, y la etiqueta quedaria como "imagen:" -que no
+# es un nombre valido y hace fallar el build al final, despues de haber
+# esperado todo.
+# =============================================================================
+
+substitutions:
+  _IMAGE: ""
+
+steps:
+  # La cache solo sirve si la imagen anterior esta en la maquina que construye.
+  # Sin este paso, --cache-from no encuentra nada y no avisa: simplemente
+  # reconstruye todo y parece que la cache "no funciona".
+  #
+  # El `|| true` es necesario: en el PRIMER build no existe ningun :latest que
+  # traer, y sin el, el paso falla y se lleva el build entero.
+  - id: traer-cache
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - docker pull ${_IMAGE}:latest || true
+
+  - id: construir
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=infra/docker/cloudrun.Dockerfile
+      - --tag=${_IMAGE}:latest
+      - --tag=${_IMAGE}:$BUILD_ID
+      - --cache-from=${_IMAGE}:latest
+      - .
+
+images:
+  - ${_IMAGE}:latest
+  - ${_IMAGE}:$BUILD_ID
+
+options:
+  # La imagen ronda 1 GB: instala los requisitos de cuatro servicios Django,
+  # compila psycopg y argon2-cffi, y construye Tailwind. Con la maquina por
+  # omision tarda bastante mas; esta lo deja en pocos minutos y solo se paga
+  # el tiempo que corre.
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1800s

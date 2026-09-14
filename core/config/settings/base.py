@@ -141,10 +141,18 @@ TEMPLATES = [
 # PostgreSQL tambien en desarrollo: SQLite no tiene los tipos, constraints ni
 # comportamiento transaccional de Postgres, y las diferencias aparecen justo
 # en produccion. Ver docs/database.md.
+# Sin DB_SOCKET se lee la URL completa, exactamente como siempre. Con
+# DB_SOCKET (Cloud Run + Cloud SQL) la conexion se arma de piezas, para que
+# la contrasena pueda venir de Secret Manager en vez de quedar escrita
+# dentro de una URL en la configuracion del servicio. Ver samy_common.db.
+from samy_common.db import configurar_base_de_datos  # noqa: E402
+
 DATABASES = {
-    "default": env.db_url(
-        "CORE_DATABASE_URL",
-        default="postgres://samy:samy@localhost:5432/samy_core",
+    "default": configurar_base_de_datos(
+        env,
+        variable_url="CORE_DATABASE_URL",
+        url_por_omision="postgres://samy:samy@localhost:5432/samy_core",
+        nombre_por_omision="samy_core",
     )
 }
 DATABASES["default"]["ATOMIC_REQUESTS"] = False

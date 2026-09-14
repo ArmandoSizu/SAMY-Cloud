@@ -66,10 +66,18 @@ TEMPLATES = [
     }
 ]
 
+# Sin DB_SOCKET se lee la URL completa, exactamente como siempre. Con
+# DB_SOCKET (Cloud Run + Cloud SQL) la conexion se arma de piezas, para que
+# la contrasena pueda venir de Secret Manager en vez de quedar escrita
+# dentro de una URL en la configuracion del servicio. Ver samy_common.db.
+from samy_common.db import configurar_base_de_datos  # noqa: E402
+
 DATABASES = {
-    "default": env.db_url(
-        "BILLPAY_DATABASE_URL",
-        default="postgres://samy_billpay:billpay_dev_password@localhost:5432/samy_billpay",
+    "default": configurar_base_de_datos(
+        env,
+        variable_url="BILLPAY_DATABASE_URL",
+        url_por_omision="postgres://samy_billpay:billpay_dev_password@localhost:5432/samy_billpay",
+        nombre_por_omision="samy_billpay",
     )
 }
 DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=60)

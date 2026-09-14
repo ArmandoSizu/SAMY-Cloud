@@ -87,10 +87,18 @@ TEMPLATES = [
 # El usuario samy_payments solo tiene privilegios sobre samy_payments. No
 # puede leer las tablas del Core ni las de los otros servicios: el aislamiento
 # lo impone PostgreSQL, no la buena voluntad del codigo.
+# Sin DB_SOCKET se lee la URL completa, exactamente como siempre. Con
+# DB_SOCKET (Cloud Run + Cloud SQL) la conexion se arma de piezas, para que
+# la contrasena pueda venir de Secret Manager en vez de quedar escrita
+# dentro de una URL en la configuracion del servicio. Ver samy_common.db.
+from samy_common.db import configurar_base_de_datos  # noqa: E402
+
 DATABASES = {
-    "default": env.db_url(
-        "PAYMENTS_DATABASE_URL",
-        default="postgres://samy_payments:payments_dev_password@localhost:5432/samy_payments",
+    "default": configurar_base_de_datos(
+        env,
+        variable_url="PAYMENTS_DATABASE_URL",
+        url_por_omision="postgres://samy_payments:payments_dev_password@localhost:5432/samy_payments",
+        nombre_por_omision="samy_payments",
     )
 }
 DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=60)
