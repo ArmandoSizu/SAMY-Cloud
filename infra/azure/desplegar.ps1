@@ -29,8 +29,21 @@
 #   .\infra\azure\desplegar.ps1 -Region eastus2      # si la region da problemas
 #   .\infra\azure\desplegar.ps1 -SoloImagen          # solo reconstruir y publicar
 #
-# Requiere `az login` hecho en ESTA maquina. La sesion de Cloud Shell no
-# cuenta: vive en el navegador, dentro de Azure, y no en este equipo.
+# DONDE CORRERLO
+# --------------
+# En cualquiera de los dos, y el script se adapta solo:
+#
+#   a) Azure Cloud Shell. Ya viene autenticado y con az instalado; es el camino
+#      corto. Como ahi el repositorio se clona de GitHub y el .env NO se
+#      versiona -ni debe-, las credenciales de Linntae se piden por teclado,
+#      sin eco.
+#
+#   b) La maquina de desarrollo, con `az login` hecho EN ELLA. Ahi el script
+#      lee las credenciales del .env local y no pregunta nada.
+#
+# Lo que no funciona es mezclarlos: la sesion de Cloud Shell vive en el
+# navegador, dentro de Azure, y el `az` del equipo tiene su propio almacen de
+# credenciales, vacio hasta que se hace `az login` ahi.
 # =============================================================================
 
 param(
@@ -261,8 +274,38 @@ function Leer-Del-Env { param([string]$Clave)
 }
 
 if ($GUARDAR_CLAVE) { Guardar-Secreto "DB-PASS" $PG_CLAVE }
-Guardar-Secreto "LINNTAE-USERNAME" (Leer-Del-Env "LINNTAE_USERNAME")
-Guardar-Secreto "LINNTAE-PASSWORD" (Leer-Del-Env "LINNTAE_PASSWORD")
+# Las credenciales de Linntae vienen del .env cuando este script corre en la
+# maquina de desarrollo. En Cloud Shell no hay .env -y no debe haberlo, porque
+# ahi el repositorio se clona de GitHub y el .env nunca se versiona-, asi que
+# se piden por teclado.
+#
+# Read-Host -AsSecureString: no se ven al teclearlas, no quedan en el
+# historial de la terminal y no pasan por la bitacora. El paso por texto plano
+# dura lo que tarda `az` en recibirlas.
+#
+# Si el secreto YA esta en Key Vault no se vuelve a pedir: volver a correr el
+# script tras un fallo no debe obligar a teclear credenciales otra vez.
+function Asegurar-Credencial { param([string]$Secreto, [string]$ClaveEnv, [string]$Etiqueta)
+    if (Existe @("keyvault", "secret", "show", "--vault-name", $KV, "--name", $Secreto)) {
+        Registrar "El secreto $Secreto ya existe en Key Vault."
+        return
+    }
+    $valor = Leer-Del-Env $ClaveEnv
+    if ($valor) {
+        Registrar "$Secreto tomado del .env local."
+    } else {
+        Write-Host ""
+        Write-Host "  No hay .env en esta maquina. Escribe $Etiqueta de Linntae."
+        Write-Host "  No se vera mientras escribes y no queda en el historial."
+        $seguro = Read-Host -Prompt "  $Etiqueta" -AsSecureString
+        $valor = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
+            [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($seguro))
+    }
+    Guardar-Secreto $Secreto $valor
+}
+
+Asegurar-Credencial "LINNTAE-USERNAME" "LINNTAE_USERNAME" "usuario"
+Asegurar-Credencial "LINNTAE-PASSWORD" "LINNTAE_PASSWORD" "contrasena"
 
 if (-not (Existe @("keyvault", "secret", "show", "--vault-name", $KV, "--name", "DJANGO-SECRET-KEY"))) {
     $b = New-Object byte[] 48
