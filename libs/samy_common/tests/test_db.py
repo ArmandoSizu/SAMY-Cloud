@@ -18,6 +18,9 @@ URL_DEV = "postgres://samy_topups:topups_dev_password@localhost:5432/samy_topups
 def _configurar(monkeypatch, **entorno):
     for clave in (
         "DB_SOCKET",
+        "DB_HOST",
+        "DB_PORT",
+        "DB_SSLMODE",
         "DB_USER",
         "DB_PASS",
         "TOPUPS_DATABASE_URL",
@@ -138,6 +141,50 @@ class TestConSocketDeCloudSql:
         """
         config = _configurar(monkeypatch, DB_SOCKET=self.SOCKET)
         assert config["PASSWORD"] == ""
+
+
+class TestConHostDeRed:
+    """Azure Database for PostgreSQL Flexible Server, o cualquier TCP."""
+
+    HOST = "samy-postgres.postgres.database.azure.com"
+
+    def test_se_conecta_por_tcp_con_puerto(self, monkeypatch) -> None:
+        config = _configurar(monkeypatch, DB_HOST=self.HOST, DB_PASS="x")
+        assert config["HOST"] == self.HOST
+        assert config["PORT"] == "5432"
+        assert config["NAME"] == "samy_topups"
+
+    def test_el_tls_es_obligatorio_por_omision(self, monkeypatch) -> None:
+        """Sin esto la contrasena y cada recarga viajarian en texto claro.
+
+        Y el fallo no seria visible: la conexion funcionaria igual. Azure
+        ademas rechaza las conexiones sin cifrar, asi que el valor por omision
+        tiene que ser el seguro.
+        """
+        config = _configurar(monkeypatch, DB_HOST=self.HOST, DB_PASS="x")
+        assert config["OPTIONS"]["sslmode"] == "require"
+
+    def test_bajar_el_tls_exige_escribirlo_a_mano(self, monkeypatch) -> None:
+        config = _configurar(
+            monkeypatch, DB_HOST=self.HOST, DB_PASS="x", DB_SSLMODE="disable"
+        )
+        assert config["OPTIONS"]["sslmode"] == "disable"
+
+    def test_el_socket_gana_sobre_el_host(self, monkeypatch) -> None:
+        """Si estan los dos, manda el socket y NO se pide sslmode.
+
+        Un socket de dominio Unix no sale de la maquina, asi que 'require'
+        sobre el no aporta nada y en algunos casos rompe la conexion.
+        """
+        config = _configurar(
+            monkeypatch,
+            DB_SOCKET="/cloudsql/p:r:i",
+            DB_HOST=self.HOST,
+            DB_PASS="x",
+        )
+        assert config["HOST"] == "/cloudsql/p:r:i"
+        assert config["PORT"] == ""
+        assert "sslmode" not in config["OPTIONS"]
 
 
 if __name__ == "__main__":  # pragma: no cover

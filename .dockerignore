@@ -1,0 +1,75 @@
+# =============================================================================
+# SAMY Cloud - Que NO entra al contexto de construccion
+# =============================================================================
+#
+# POR QUE ESTE ARCHIVO ES DE SEGURIDAD Y NO DE RENDIMIENTO
+# --------------------------------------------------------
+# Faltaba, y eso importa mas de lo que parece. Que el Dockerfile no copie el
+# .env no es suficiente: `docker build .` empaqueta TODO el directorio y se lo
+# manda al demonio, y una construccion remota -`az acr build`, Cloud Build- lo
+# SUBE entero al servicio de construccion en la nube. El .env con las
+# credenciales productivas de Linntae y de PostgreSQL viajaba ahi sin que
+# ninguna linea del Dockerfile lo mencionara.
+#
+# La imagen seguia limpia; el trayecto no.
+#
+# Ademas recorta el contexto de cientos de megas a unos pocos, y eso es lo que
+# hace que una construccion en la nube tarde segundos en subir y no minutos.
+# =============================================================================
+
+# --- Secretos. Lo primero y lo que no se puede negociar. ---------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+**/secrets/
+**/credentials.json
+
+# --- Git ---------------------------------------------------------------------
+.git
+.gitignore
+.gitattributes
+
+# --- Dependencias y artefactos que se reconstruyen dentro de la imagen ------
+**/node_modules
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/htmlcov
+**/.coverage
+
+# --- Estaticos recolectados. Se recolectan al arrancar; traerlos del disco
+# --- local mezclaria un manifiesto viejo con archivos nuevos.
+**/staticfiles
+
+# --- Bases de datos y medios locales ----------------------------------------
+**/*.sqlite3
+**/*.db
+**/media
+
+# --- Bitacoras de evidencias de proveedores. Llevan peticiones y respuestas
+# --- reales y no tienen por que salir de esta maquina.
+LINNTAE_DEMO_LOGS_*.txt
+m.txt
+
+# --- Entorno de desarrollo que la imagen no usa ------------------------------
+docker-compose.yml
+docker-compose.*.yml
+.vscode
+.idea
+**/.DS_Store
+scripts/
+docs/
+BACKLOG.md
+
+# --- Pruebas. No se ejecutan dentro de la imagen de produccion. -------------
+**/tests/
+**/test_*.py
+**/conftest.py

@@ -64,8 +64,9 @@ def configurar_base_de_datos(
         base aunque las cuatro vivan en la misma instancia de Cloud SQL.
     """
     socket = env.str("DB_SOCKET", default="").strip()
+    host = env.str("DB_HOST", default="").strip()
 
-    if not socket:
+    if not socket and not host:
         # Camino de siempre. Ni una diferencia respecto a antes.
         return env.db_url(variable_url, default=url_por_omision)
 
@@ -74,16 +75,35 @@ def configurar_base_de_datos(
     # por omision ya es el correcto.
     prefijo = variable_url.split("_DATABASE_URL")[0]
 
-    return {
+    config: dict[str, Any] = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": env.str(f"{prefijo}_DB_NAME", default=nombre_por_omision),
         "USER": env.str("DB_USER", default="samy"),
         "PASSWORD": env.str("DB_PASS", default=""),
-        # Con un socket de dominio Unix, psycopg espera la RUTA en HOST y el
-        # puerto vacio. Poner aqui un host de red y un puerto es el error
-        # clasico: da "connection refused" contra 127.0.0.1 y manda a buscar
-        # un problema de red que no existe.
-        "HOST": socket,
-        "PORT": "",
         "OPTIONS": {},
     }
+
+    if socket:
+        # Socket de dominio Unix (el proxy de Cloud SQL). psycopg espera la
+        # RUTA en HOST y el puerto VACIO. Poner aqui un host de red y un puerto
+        # es el error clasico: da "connection refused" contra 127.0.0.1 y manda
+        # a buscar un problema de red que no existe.
+        config["HOST"] = socket
+        config["PORT"] = ""
+        return config
+
+    # Host de red (Azure Database for PostgreSQL Flexible Server, o cualquier
+    # PostgreSQL administrado al que se llega por TCP).
+    config["HOST"] = host
+    config["PORT"] = env.str("DB_PORT", default="5432")
+
+    # TLS obligatorio por omision, y esto NO es una preferencia.
+    #
+    # Azure rechaza las conexiones sin cifrar, asi que sin esto el fallo seria
+    # inmediato. Pero el valor por omision es 'require' incluso fuera de Azure
+    # a proposito: si algun dia se apunta a un PostgreSQL que SI acepta texto
+    # claro, la contrasena y cada recarga viajarian sin cifrar por una red que
+    # no controlamos, y no habria ningun error que lo delatara. Se puede bajar
+    # con DB_SSLMODE, pero hay que escribirlo a mano.
+    config["OPTIONS"]["sslmode"] = env.str("DB_SSLMODE", default="require")
+    return config
