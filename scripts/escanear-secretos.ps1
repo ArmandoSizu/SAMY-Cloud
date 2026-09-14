@@ -114,8 +114,24 @@ $patrones = @(
     @{ nombre = 'llave privada PEM';      regex = '-----BEGIN [A-Z ]*PRIVATE KEY-----' },
     @{ nombre = 'token JWT';              regex = 'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.' },
     @{ nombre = 'cabecera Authorization'; regex = '(?i)authorization["'':\s]+(?:bearer|basic)\s+(?<cred>[A-Za-z0-9._\-+/=]{12,})' },
-    @{ nombre = 'URL con usuario:clave';  regex = '(?i)(?:https?|postgres(?:ql)?|redis|amqp)://(?<usuario>[^/\s:@]+):(?<cred>[^/\s@]{4,})@' }
+    @{ nombre = 'URL con usuario:clave';  regex = '(?i)(?:https?|postgres(?:ql)?|redis|amqp)://(?<usuario>[^/\s:@]+):(?<cred>[^/\s@]{4,})@(?<maquina>[^/\s:?#]+)' }
 )
+
+function Es-MaquinaDeJuguete {
+    param([string]$Maquina)
+    if (-not $Maquina) { return $false }
+    # Una URL con credenciales que apunta a la propia maquina, o a un nombre
+    # que es evidentemente un hueco de documentacion, no es un secreto
+    # filtrado: es el valor de desarrollo o un ejemplo.
+    #
+    # El corte es el HOST y no la contrasena, y es a proposito: la contrasena
+    # de un ejemplo puede parecerse a una de verdad -'topups_dev_password'
+    # tiene minusculas, guiones bajos y largo suficiente- mientras que
+    # 'localhost' no se parece a nada productivo. Antes el escaner marcaba los
+    # tres ejemplos de samy_common/db.py y sus pruebas en cada corrida.
+    return ($Maquina -imatch '^(localhost|127\.0\.0\.1|\[::1\]|host|hostname|servidor|otrohost|db|postgres|redis)$' -or
+            $Maquina -imatch '(^|\.)(example|test|local|invalid)(\.|$)')
+}
 
 function Es-Marcador {
     param([string]$Credencial)
@@ -150,6 +166,7 @@ foreach ($archivo in $archivos) {
             # credencial: es un hueco con forma de credencial.
             if ($m.Groups['usuario'].Success -and
                 $m.Groups['cred'].Value -ceq $m.Groups['usuario'].Value) { continue }
+            if (Es-MaquinaDeJuguete -Maquina $m.Groups['maquina'].Value) { continue }
 
             # El texto que coincidio puede ser un valor publico: la URL de
             # desarrollo con usuario y contrasena de juguete que ya esta en el
