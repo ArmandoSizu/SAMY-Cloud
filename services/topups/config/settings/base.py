@@ -235,12 +235,27 @@ LINNTAE_ENABLED = env.bool("LINNTAE_ENABLED", default=False)
 #: vez de convertirse en sandbox silenciosamente: un error de dedo aqui es la
 #: diferencia entre una recarga de prueba y una real, y prefiero que se vea al
 #: levantar el servicio que al vender.
-LINNTAE_ENV = env.str("LINNTAE_ENV", default="demo").strip().lower()
-if LINNTAE_ENV not in ("demo", "production"):
+#:
+#: La lista de sinonimos es corta y deliberada, igual que la de
+#: ``samy_common.providers.environment._SINONIMOS``. Acepta ``prod`` porque esa
+#: otra tabla ya lo acepta para ``ENVIRONMENT``, y dos variables que describen
+#: el mismo concepto con vocabularios distintos son una trampa: escribir
+#: ``prod`` en las dos deberia funcionar en las dos, o fallar en las dos. Lo
+#: que NO se acepta es nada fuera de la tabla: ``pro`` o ``produccion`` siguen
+#: deteniendo el arranque, porque el modo por omision no puede ser el caro.
+_LINNTAE_ENV_SINONIMOS = {
+    "demo": "demo",
+    "sandbox": "demo",
+    "production": "production",
+    "prod": "production",
+}
+_LINNTAE_ENV_CRUDO = env.str("LINNTAE_ENV", default="demo").strip().lower()
+if _LINNTAE_ENV_CRUDO not in _LINNTAE_ENV_SINONIMOS:
     raise ImproperlyConfigured(
-        f"LINNTAE_ENV='{LINNTAE_ENV}' no se reconoce. Los unicos valores "
-        "validos son 'demo' y 'production'."
+        f"LINNTAE_ENV='{_LINNTAE_ENV_CRUDO}' no se reconoce. Los unicos "
+        "valores validos son: " + ", ".join(sorted(_LINNTAE_ENV_SINONIMOS))
     )
+LINNTAE_ENV = _LINNTAE_ENV_SINONIMOS[_LINNTAE_ENV_CRUDO]
 
 #: Modo del proveedor derivado del ambiente de Linntae. Existe porque
 #: samy_common.providers.environment razona en SANDBOX/PRODUCTION y porque

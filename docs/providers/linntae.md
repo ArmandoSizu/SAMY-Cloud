@@ -33,6 +33,15 @@ recarga. El orden es siempre pago primero, entrega después.
 | DEMO | `https://apidemo.linn.mx/api/v1/` | `apidemo.linn.mx` |
 | PRODUCCIÓN | `https://api.linn.mx/api/v1/` | `api.linn.mx` |
 
+`LINNTAE_ENV` acepta cuatro escrituras y sólo cuatro: `demo` y `sandbox` (que
+significan DEMO), `production` y `prod` (que significan PRODUCCIÓN). La tabla
+está en `config/settings/base.py` y acepta `prod` porque
+`samy_common.providers.environment` ya lo acepta para `ENVIRONMENT`: dos
+variables que describen el mismo concepto con vocabularios distintos son una
+trampa. Cualquier otra cosa —`pro`, `produccion`, un dedazo— **detiene el
+arranque** en vez de convertirse en DEMO silenciosamente. Una prueba impide que
+esa tabla y la de hosts se separen.
+
 La pareja `LINNTAE_ENV` ↔ `LINNTAE_BASE_URL` se valida en el cliente
 (`problemas_de_ambiente()`), y `demo` **no puede** hablar con `api.linn.mx` ni
 al contrario. El adaptador se niega antes de abrir la conexión.
@@ -121,7 +130,7 @@ logs, ni en la imagen de Docker, ni en el frontend.
 
 | Variable | Por omisión | Qué pasa si falta |
 |---|---|---|
-| `LINNTAE_ENV` | `demo` | Un valor distinto de `demo`/`production` impide el arranque |
+| `LINNTAE_ENV` | `demo` | Sólo `demo`/`sandbox`/`production`/`prod`; cualquier otra cosa impide el arranque |
 | `LINNTAE_BASE_URL` | URL de DEMO | Vacía ⇒ `NOT_CONFIGURED` |
 | `LINNTAE_USERNAME` | — | `NOT_CONFIGURED` |
 | `LINNTAE_PASSWORD` | — | `NOT_CONFIGURED` |
@@ -523,3 +532,55 @@ No está activada y no se activa por accidente. Hacen falta, a la vez:
 
 Mientras el README diga "Linntae DEMO integration", producción no está
 certificada. No se cambia esa frase hasta que lo esté.
+
+## 17. Primer intento contra PRODUCCIÓN (2026-09-13)
+
+Linntae otorgó accesos productivos para la cuenta **Cajero Web Service
+105225**. Se apuntó SAMY a producción en modo estrictamente de lectura y
+**la autenticación fue rechazada**. Queda aquí porque el resultado importa
+tanto como el éxito habría importado, y porque el próximo intento debe
+empezar sabiendo qué ya se descartó.
+
+### Lo que se observó
+
+| Dato | Valor |
+|---|---|
+| URL | `https://api.linn.mx/api/v1/getToken` |
+| HTTP | `200` |
+| Latencia | 411 ms |
+| `server` | `cloudflare` |
+| Cuerpo | `{"code": 4, "message": "Datos de usuario o contraseña incorrectos"}` |
+
+Los otros seis endpoints de lectura **no se ejecutaron**: sin token no hay
+llamada que hacer. No se intentó ninguna contraseña alternativa ni ningún
+formato distinto de usuario: contra un proveedor que puede bloquear cuentas
+por intentos fallidos, insistir es peor que fallar, y adivinar una credencial
+no es diagnosticar.
+
+### Lo que el resultado descarta
+
+Un `code 4` dentro de un HTTP 200 es una respuesta de negocio, no de
+transporte. Eso descarta, con evidencia y no por suposición:
+
+* **Geobloqueo.** El detector de `country-XX-403` no se activó y la respuesta
+  llegó con cuerpo JSON normal. La IP de salida llega a Linntae.
+* **HTTP 401/403.** No hubo ninguno. Cloudflare no interpuso nada.
+* **Host equivocado.** La URL es exactamente la productiva y la guarda de host
+  la aceptó.
+* **Truncamiento de la contraseña al leer el `.env`.** Es la sospecha obvia
+  cuando una contraseña trae `#`, porque en un `.env` ese carácter suele
+  iniciar un comentario. Se comprobó sin imprimir el valor: `django-environ`
+  entrega 20 caracteres, ASCII, sin comillas, sin espacios al borde, **y el
+  `#` sigue dentro**. Lo que hay en el archivo es lo que sale por la red.
+
+### Lo que queda por confirmar, y es de Linntae
+
+Que la cuenta productiva esté dada de alta y activa para la API, y cuál es
+exactamente el `username` que espera su lado (el nombre comercial de la cuenta
+lleva espacios; el `.env` lleva una forma sin ellos). Ninguna de las dos cosas
+se puede averiguar desde aquí sin probar credenciales, que es justo lo que no
+se hace.
+
+Mientras tanto los tres candados siguen cerrados y `linntae_diagnostico` los
+imprime en cada corrida: ambiente del servicio, autorización para mover dinero
+y `typeBalance`. Apuntar a producción no abrió ninguno.

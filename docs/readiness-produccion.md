@@ -103,18 +103,22 @@ saldo antes y después de cada recarga y lo guarda en
 
 ### Lo que falta de Linntae, exclusivamente
 
-1. Credenciales DEMO en `.env` (las pone Sizú).
-2. Confirmación escrita de `typeBalance` para nuestra cuenta.
-3. Autorización explícita de Sizú para la primera recarga DEMO.
-4. La medición del mecanismo de comisión (sale de esa misma recarga).
-5. Acuerdo sobre países / IPs permitidas, **antes de elegir región de nube**:
+1. ~~Credenciales DEMO en `.env`~~ — puestas, y las lecturas DEMO corrieron.
+2. **Credenciales PRODUCTIVAS que autentiquen.** Linntae entregó accesos para
+   *Cajero Web Service 105225* y su `/getToken` productivo las rechaza con
+   `code 4`, "Datos de usuario o contraseña incorrectos" (HTTP 200, sin
+   geobloqueo, sin 401/403, y con la contraseña llegando íntegra desde el
+   `.env` — ver `docs/providers/linntae.md`, sección 17). Es de su lado.
+3. Confirmación escrita de `typeBalance` para nuestra cuenta.
+4. Autorización explícita de Sizú para la primera recarga.
+5. La medición del mecanismo de comisión (sale de esa misma recarga).
+6. Acuerdo sobre países / IPs permitidas, **antes de elegir región de nube**:
    su API documenta `HTTP 403` con `Error country-US-403`, o sea que rechaza
    por país de origen. Desarrollando desde México esto no se ve; en el primer
    despliegue sí.
-6. Para producción: cuenta productiva, saldo fondeado y mappings productivos
-   aprobados por una persona.
+7. Saldo fondeado y mappings productivos aprobados por una persona.
 
-Ninguno de los seis se resuelve escribiendo código.
+Ninguno se resuelve escribiendo código.
 
 ---
 

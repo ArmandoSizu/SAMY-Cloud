@@ -86,6 +86,13 @@ class Command(BaseCommand):
                 proveedor.config.permitir_operaciones_reales
             ),
         }
+        # Los candados, antes que nada y sin tocar la red.
+        #
+        # Apuntar a produccion y poder gastar en produccion son dos cosas
+        # distintas, y desde que el host dice ``api.linn.mx`` la primera
+        # pregunta de quien lee esto es la segunda. Ponerlo aqui arriba evita
+        # que alguien deduzca "estamos en produccion, entonces ya vende".
+        reporte["candados"] = self._candados(proveedor)
 
         # --- ambiente ------------------------------------------------------
         problemas = proveedor.config.problemas_de_ambiente()
@@ -131,9 +138,141 @@ class Command(BaseCommand):
             lambda: self._catalogo(proveedor, operador_buscado, max_ofertas)
         )
 
+        # --- companias por endpoint dedicado -------------------------------
+        reporte["companias_tae"] = self._intentar(
+            lambda: self._companias(proveedor.companias_tae())
+        )
+        reporte["companias_virtuales"] = self._intentar(
+            lambda: self._companias(proveedor.companias_virtuales())
+        )
+        reporte["discrepancias_entre_endpoints"] = self._discrepancias(reporte)
+
         self._imprimir(reporte, como_json)
 
     # -- secciones ---------------------------------------------------------
+
+    def _candados(self, proveedor: Any) -> dict[str, Any]:
+        """Que impide hoy que este proveedor gaste dinero. Sin llamar a nadie.
+
+        Son tres cerrojos independientes y basta uno para que no se venda. Se
+        reportan los tres por separado, y no un "no vende" a secas, porque
+        abrir uno creyendo que era el unico es precisamente como se llega a
+        vender sin querer.
+        """
+        from django.conf import settings
+
+        from samy_common.providers.environment import (
+            ambiente_actual,
+            modo_esperado,
+            verificar_ambiente,
+        )
+
+        try:
+            ambiente = str(ambiente_actual())
+            esperado = str(modo_esperado(ambiente_actual()))
+        except Exception as exc:  # ambiente no reconocido: tambien es un candado
+            ambiente = f"ILEGIBLE ({type(exc).__name__})"
+            esperado = "-"
+
+        try:
+            verificar_ambiente(
+                provider_slug=proveedor.slug, provider_mode=proveedor.mode
+            )
+            ambiente_ok = True
+            ambiente_detalle = (
+                f"ENVIRONMENT={ambiente} concuerda con el modo {proveedor.mode}."
+            )
+        except Exception as exc:
+            ambiente_ok = False
+            ambiente_detalle = str(exc)[:240]
+
+        candados = {
+            "ambiente_del_servicio": {
+                "abierto": ambiente_ok,
+                "ENVIRONMENT": ambiente,
+                "modo_del_proveedor": str(proveedor.mode),
+                "modo_exigido_por_el_ambiente": esperado,
+                "detalle": ambiente_detalle,
+            },
+            "autorizacion_para_mover_dinero": {
+                "abierto": bool(proveedor.config.permitir_operaciones_reales),
+                "LINNTAE_ENABLED": bool(settings.LINNTAE_ENABLED),
+                "ALLOW_REAL_PROVIDER_TRANSACTIONS": bool(
+                    settings.ALLOW_REAL_PROVIDER_TRANSACTIONS
+                ),
+            },
+            "type_balance_confirmado": {
+                "abierto": proveedor.config.type_balance is not None,
+                "valor": proveedor.config.type_balance,
+                "detalle": (
+                    "LINNTAE_TYPE_BALANCE vacio: no sabemos de que bolsa se "
+                    "descuenta una compra, y adivinarlo es cobrarle al cliente "
+                    "antes de saber si la recarga se puede mandar."
+                    if proveedor.config.type_balance is None
+                    else "Confirmado."
+                ),
+            },
+        }
+        candados["puede_vender"] = all(c["abierto"] for c in candados.values())
+        return candados
+
+    def _companias(self, companias: list[Any]) -> dict[str, Any]:
+        return {
+            "total": len(companias),
+            "ofertas": sum(len(c.ofertas) for c in companias),
+            "operadores": [
+                {
+                    "idOperator": c.id_operator,
+                    "nombre": c.nombre,
+                    "ofertas": len(c.ofertas),
+                }
+                for c in companias
+            ],
+        }
+
+    def _discrepancias(self, reporte: dict[str, Any]) -> list[str]:
+        """Compara ``syncProducts`` contra los dos endpoints por seccion.
+
+        Linntae publica el mismo catalogo por tres puertas y en DEMO las tres
+        no coincidian: un operador con 13 ofertas por una puerta y 12 por
+        otra. Importa porque el emparejamiento comercial lee UNA de ellas: si
+        la oferta que se vende solo existe en la puerta que no leemos, el
+        producto aparece vendible y la compra falla en el unico momento en que
+        ya se cobro. Comprobarlo a mano una vez es facil y se olvida; por eso
+        vive aqui.
+        """
+        catalogo = (reporte.get("catalogo") or {}).get("datos") or {}
+        if not catalogo:
+            return []
+
+        por_sync: dict[str, tuple[str, int]] = {
+            str(o.get("idOperator")): (str(o.get("nombre")), int(o.get("ofertas") or 0))
+            for o in catalogo.get("operadores") or []
+        }
+
+        avisos: list[str] = []
+        for clave, titulo in (
+            ("companias_tae", "taeCompanies"),
+            ("companias_virtuales", "taeVirtualCompanies"),
+        ):
+            bloque = (reporte.get(clave) or {}).get("datos") or {}
+            for operador in bloque.get("operadores") or []:
+                id_op = str(operador.get("idOperator"))
+                nombre = str(operador.get("nombre"))
+                aqui = int(operador.get("ofertas") or 0)
+                if id_op not in por_sync:
+                    avisos.append(
+                        f"{nombre} (idOperator {id_op}) aparece en {titulo} y "
+                        "NO en syncProducts."
+                    )
+                    continue
+                _, alla = por_sync[id_op]
+                if aqui != alla:
+                    avisos.append(
+                        f"{nombre} (idOperator {id_op}): syncProducts declara "
+                        f"{alla} ofertas y {titulo} declara {aqui}."
+                    )
+        return avisos
 
     def _saldos(self, proveedor: Any) -> dict[str, Any]:
         saldos = proveedor.saldos()
@@ -249,10 +388,28 @@ class Command(BaseCommand):
             for falta in salud.get("falta") or []:
                 self.stdout.write(self.style.WARNING(f"  falta: {falta}"))
 
+        self._candados_impresos(reporte.get("candados"))
+
         self._seccion("SALDO", reporte.get("saldo"))
         self._seccion("ESQUEMA", reporte.get("esquema"))
         self._seccion("COMISIONES", reporte.get("comisiones"), resumen_comisiones=True)
         self._seccion("CATALOGO", reporte.get("catalogo"), resumen_catalogo=True)
+        self._seccion(
+            "COMPANIAS (taeCompanies)", reporte.get("companias_tae"), resumen_companias=True
+        )
+        self._seccion(
+            "COMPANIAS (taeVirtualCompanies)",
+            reporte.get("companias_virtuales"),
+            resumen_companias=True,
+        )
+
+        avisos = reporte.get("discrepancias_entre_endpoints") or []
+        self.stdout.write("")
+        self.stdout.write("-- DISCREPANCIAS ENTRE ENDPOINTS " + "-" * 24)
+        if not avisos:
+            self.stdout.write(self.style.SUCCESS("  Ninguna: las tres puertas coinciden."))
+        for aviso in avisos:
+            self.stdout.write(self.style.WARNING(f"  ! {aviso}"))
 
         self.stdout.write("")
         self.stdout.write(
@@ -272,6 +429,41 @@ class Command(BaseCommand):
         self.stdout.write("Este comando no escribio nada y no llamo a ningun endpoint de compra.")
         self.stdout.write("")
 
+    def _candados_impresos(self, candados: dict[str, Any] | None) -> None:
+        if not candados:
+            return
+        self.stdout.write("")
+        self.stdout.write("-- CANDADOS (que impide vender hoy) " + "-" * 21)
+        etiquetas = {
+            "ambiente_del_servicio": "Ambiente del servicio",
+            "autorizacion_para_mover_dinero": "Autorizacion para mover dinero",
+            "type_balance_confirmado": "typeBalance confirmado",
+        }
+        for clave, etiqueta in etiquetas.items():
+            bloque = candados.get(clave) or {}
+            abierto = bool(bloque.get("abierto"))
+            # ABIERTO es la palabra alarmante aqui: un candado abierto es un
+            # permiso concedido, no una prueba que paso.
+            marca = (
+                self.style.WARNING("ABIERTO")
+                if abierto
+                else self.style.SUCCESS("CERRADO")
+            )
+            self.stdout.write(f"  {etiqueta:32} {marca}")
+            detalle = bloque.get("detalle")
+            if detalle and not abierto:
+                self.stdout.write(f"  {'':32} {str(detalle)[:110]}")
+
+        puede = bool(candados.get("puede_vender"))
+        self.stdout.write("")
+        self.stdout.write(
+            self.style.WARNING("  => PUEDE VENDER: los tres candados estan abiertos.")
+            if puede
+            else self.style.SUCCESS(
+                "  => NO PUEDE VENDER. Basta un candado cerrado, y hay al menos uno."
+            )
+        )
+
     def _seccion(
         self,
         titulo: str,
@@ -279,6 +471,7 @@ class Command(BaseCommand):
         *,
         resumen_comisiones: bool = False,
         resumen_catalogo: bool = False,
+        resumen_companias: bool = False,
     ) -> None:
         self.stdout.write("")
         self.stdout.write(f"-- {titulo} " + "-" * max(0, 56 - len(titulo)))
@@ -290,6 +483,18 @@ class Command(BaseCommand):
             return
 
         datos = bloque.get("datos") or {}
+
+        if resumen_companias:
+            self.stdout.write(
+                f"  Operadores: {datos.get('total')}  Ofertas: {datos.get('ofertas')}"
+            )
+            for operador in datos.get("operadores") or []:
+                self.stdout.write(
+                    f"    {str(operador.get('idOperator')):>6}  "
+                    f"{str(operador.get('nombre'))[:34]:34} "
+                    f"{operador.get('ofertas')} ofertas"
+                )
+            return
 
         if resumen_comisiones:
             self.stdout.write(f"  Filas: {datos.get('total')}")

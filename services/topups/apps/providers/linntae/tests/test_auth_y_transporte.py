@@ -24,6 +24,7 @@ from django.test import SimpleTestCase
 
 from apps.providers.linntae import auth
 from apps.providers.linntae.client import (
+    HOST_POR_AMBIENTE,
     URL_PRODUCCION,
     LinntaeClient,
     LinntaeConfig,
@@ -35,6 +36,13 @@ from samy_common.providers.exceptions import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+
+
+def _sinonimos_de_ambiente() -> dict[str, str]:
+    """La tabla que traduce ``LINNTAE_ENV``, leida del modulo que la define."""
+    from config.settings import base
+
+    return base._LINNTAE_ENV_SINONIMOS
 
 URL_DEMO_PRUEBA = "https://apidemo.linn.mx/api/v1/"
 USUARIO_FALSO = "usuario-de-prueba"
@@ -288,6 +296,38 @@ class GuardaDeAmbiente(Base):
         """Quien configura esto quiere arreglarlo de una vez."""
         fallos = _config(ambiente="pruebas", base_url="http://otro.test/").problemas_de_ambiente()
         self.assertGreaterEqual(len(fallos), 2)
+
+    def test_todo_sinonimo_de_linntae_env_aterriza_en_un_host_conocido(self) -> None:
+        """Las dos tablas no pueden separarse sin que alguien lo note.
+
+        ``settings._LINNTAE_ENV_SINONIMOS`` traduce lo que se escribe en el
+        ``.env``; ``HOST_POR_AMBIENTE`` decide contra que host se permite
+        hablar. Si se agrega un sinonimo en la primera y no existe en la
+        segunda, el arranque pasa y la guarda de host rechaza TODAS las
+        llamadas con "ambiente no reconocido" -un fallo que se lee como un
+        problema de red y no como lo que es, una tabla desincronizada.
+
+        Se lee del modulo y no de ``django.conf.settings`` porque los ajustes
+        por ambiente hacen ``from .base import *``, y ``import *`` se salta los
+        nombres que empiezan con guion bajo. La tabla es un detalle interno del
+        modulo de ajustes y se comprueba donde vive.
+        """
+        sinonimos = _sinonimos_de_ambiente()
+        for escrito, normalizado in sinonimos.items():
+            self.assertIn(
+                normalizado,
+                HOST_POR_AMBIENTE,
+                f"LINNTAE_ENV='{escrito}' se normaliza a '{normalizado}', que "
+                "la guarda de host no conoce.",
+            )
+
+    def test_prod_y_production_son_el_mismo_ambiente(self) -> None:
+        """Y ``demo`` no esta entre ellos: la abreviatura no cambia de bando."""
+        sinonimos = _sinonimos_de_ambiente()
+        self.assertEqual(sinonimos["prod"], "production")
+        self.assertEqual(sinonimos["production"], "production")
+        self.assertEqual(sinonimos["demo"], "demo")
+        self.assertNotIn("produccion", sinonimos)
 
 
 class LecturasSeReintentan(Base):

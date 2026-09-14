@@ -17,6 +17,8 @@ Plataforma SaaS multi-tienda para **recargas telefónicas**, **pago de servicios
 >
 > **Las credenciales no forman parte de este repositorio.** `.env` está en `.gitignore`;
 > `.env.example` solo lleva nombres de variables y marcadores de posición.
+> Antes de cada `git push`: `.\scripts\escanear-secretos.ps1` busca los valores
+> reales del `.env` local dentro de todo lo versionado y **nunca imprime uno**.
 
 ---
 
